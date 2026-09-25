@@ -1,0 +1,26 @@
+# Private/raw data and generated artifacts
+data/
+processed_dataset/
+clips/
+frames/
+meta_data/
+
+# Training outputs
+checkpoint/
+checkpoints/
+ckpt/
+log/
+logs/
+runs/
+*.pth
+*.pth.tar
+*.pt
+
+# Python/local files
+__pycache__/
+*.py[cod]
+.DS_Store
+.venv/
+venv/
+.idea/
+.vscode/

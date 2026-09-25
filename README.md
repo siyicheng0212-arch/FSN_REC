@@ -5,12 +5,16 @@ cleaning/splitting tools and an FSN-specific Uni-AdaFocus-TSM candidate model.
 
 ## Model comparison
 
-Two complete model trees are kept side by side:
+Two complete Python source trees are kept side by side:
 
-- `models/Uni-AdaFocus-TSM-original/`: unchanged official baseline from
+- `models/Uni-AdaFocus-TSM-original/`: unchanged official Python baseline from
   `LeapLabTHU/Uni-AdaFocus`, commit
   `8846488310fdd4a18412608006030643e794c36e`.
-- `models/Uni-AdaFocus-TSM-FSN/`: the FSN candidate implementation.
+- `models/Uni-AdaFocus-TSM-FSN/`: the FSN candidate Python implementation.
+
+Upstream experiment READMEs, checkpoint names, and external artifact links are
+not mirrored in this public code release. Refer to the official upstream
+repository for those materials.
 
 The modified tree is opt-in: `--fsn_local_adapter none --fsn_interaction none`
 keeps the original baseline path. See `models/COMPARISON.md` and

@@ -1,0 +1,62 @@
+{
+  "base": {
+    "dataset": "fsn",
+    "modality": "RGB",
+    "num_classes": 7,
+    "backbone": "Uni-AdaFocus-TSM",
+    "global_encoder": "MobileNetV2-TSM",
+    "local_encoder": "ResNet50-TSM",
+    "num_glance_segments": 8,
+    "num_input_focus_segments": 36,
+    "num_focus_segments": 12,
+    "patch_size": 128,
+    "selection_metric": "validation_macro_f1",
+    "test_manifest": "processed_dataset/manifests/test.jsonl"
+  },
+  "variants": {
+    "A_baseline": {
+      "fsn_local_adapter": "none",
+      "fsn_interaction": "none"
+    },
+    "B_frame_adapter_control": {
+      "fsn_local_adapter": "frame",
+      "fsn_interaction": "none"
+    },
+    "C_temporal_adapter": {
+      "fsn_local_adapter": "temporal",
+      "fsn_interaction": "none"
+    },
+    "D_mlp_fusion_control": {
+      "fsn_local_adapter": "none",
+      "fsn_interaction": "mlp"
+    },
+    "E_cross_attention": {
+      "fsn_local_adapter": "none",
+      "fsn_interaction": "cross_attention"
+    },
+    "F_full": {
+      "fsn_local_adapter": "temporal",
+      "fsn_interaction": "cross_attention"
+    },
+    "G_full_mlp_control": {
+      "fsn_local_adapter": "temporal",
+      "fsn_interaction": "mlp"
+    }
+  },
+  "shared_module_defaults": {
+    "fsn_adapter_dim": 256,
+    "fsn_local_grid_size": 3,
+    "fsn_global_grid_size": 3,
+    "fsn_interaction_dim": 256,
+    "fsn_interaction_heads": 4,
+    "fsn_interaction_dropout": 0.1,
+    "fsn_interaction_weight": 0.2,
+    "fsn_module_lr_ratio": 1.0
+  },
+  "reporting": {
+    "primary_metric": "macro_f1",
+    "secondary_metrics": ["accuracy", "micro_f1", "weighted_f1", "per_class_precision_recall_f1_support"],
+    "required_slices": ["all", "duration_le_10s", "duration_gt_10s", "source_collection"],
+    "required_error_groups": ["进针/运针/拔针", "扫散/再灌注", "消毒", "固定"]
+  }
+}
