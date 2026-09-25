@@ -14,7 +14,7 @@ Two complete model trees are kept side by side:
 
 The modified tree is opt-in: `--fsn_local_adapter none --fsn_interaction none`
 keeps the original baseline path. See `models/COMPARISON.md` and
-`docs/MODEL_ADAFOCUS_FSN.md` for the exact changes and A–G ablations.
+`configs/fsn_adafocus_ablation.json` for the exact changes and A–G ablations.
 
 ## Data tools
 
@@ -24,8 +24,7 @@ train/validation/test manifests. Raw video, TXT files, patient metadata,
 generated clips, frames, checkpoints, and experiment logs are intentionally
 excluded from this repository.
 
-Current audited snapshot: 1,608 TXT files, 8,248 raw events, and 8,218 valid
-clips. The code also detects ELAN rows expressed as integer milliseconds and
+The code also detects ELAN rows expressed as integer milliseconds and
 normalizes them to seconds.
 
 ## Tests
