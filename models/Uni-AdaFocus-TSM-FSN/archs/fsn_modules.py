@@ -105,7 +105,10 @@ class LocalContextInteraction(nn.Module):
                 dim, heads, dropout=dropout, batch_first=True
             )
             self.attention_norm = nn.LayerNorm(dim)
-            self.beta = nn.Parameter(torch.zeros(1))
+            # The outer correction gate ``gamma`` already guarantees exact
+            # baseline equivalence.  Starting beta at one avoids a redundant
+            # double-zero gate that can keep attention dormant in short runs.
+            self.beta = nn.Parameter(torch.ones(1))
         else:
             self.cross_attention = None
             self.attention_norm = None
@@ -117,6 +120,9 @@ class LocalContextInteraction(nn.Module):
             nn.Dropout(dropout),
             nn.Linear(dim, num_classes),
         )
+        # Keep the complete interaction correction output-equivalent to the
+        # baseline when loading a baseline checkpoint.
+        self.gamma = nn.Parameter(torch.zeros(1))
 
     @staticmethod
     def _project_grid(features, projection, grid_size):
@@ -150,5 +156,5 @@ class LocalContextInteraction(nn.Module):
             local_tokens = local_tokens + self.beta * update
         local_pooled = local_tokens.mean(dim=1)
         global_pooled = global_tokens.mean(dim=1)
-        logits = self.classifier(torch.cat([local_pooled, global_pooled], dim=-1))
+        logits = self.gamma * self.classifier(torch.cat([local_pooled, global_pooled], dim=-1))
         return logits, attention

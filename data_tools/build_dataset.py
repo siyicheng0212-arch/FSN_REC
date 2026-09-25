@@ -307,7 +307,7 @@ def parse_tkhd(payload: bytes) -> tuple[int | None, int | None]:
     return round(width) or None, round(height) or None
 
 
-def parse_video_metadata(path: Path) -> dict[str, Any]:
+def parse_video_metadata(path: Path, compute_sha256: bool = True) -> dict[str, Any]:
     result: dict[str, Any] = {
         "container_extension": path.suffix.lower(),
         "file_size_bytes": path.stat().st_size,
@@ -320,11 +320,12 @@ def parse_video_metadata(path: Path) -> dict[str, Any]:
         "average_fps": None,
         "metadata_reader": "iso_bmff_fallback",
     }
-    hasher = hashlib.sha256()
-    with path.open("rb") as source:
-        while chunk := source.read(1024 * 1024):
-            hasher.update(chunk)
-    result["sha256"] = hasher.hexdigest()
+    if compute_sha256:
+        hasher = hashlib.sha256()
+        with path.open("rb") as source:
+            while chunk := source.read(1024 * 1024):
+                hasher.update(chunk)
+        result["sha256"] = hasher.hexdigest()
     try:
         with path.open("rb") as handle:
             top = atom_children(handle, 0, path.stat().st_size)
@@ -414,7 +415,13 @@ def build_video_index(video_root: Path) -> dict[tuple[str, str], list[Path]]:
     index: dict[tuple[str, str], list[Path]] = defaultdict(list)
     if not video_root.exists():
         return index
-    for path in sorted(p for p in video_root.rglob("*") if p.is_file() and p.suffix.lower() in VIDEO_EXTENSIONS):
+    for path in sorted(
+        p for p in video_root.rglob("*")
+        if p.is_file()
+        and not p.name.startswith("._")
+        and p.name != ".DS_Store"
+        and p.suffix.lower() in VIDEO_EXTENSIONS
+    ):
         source = path.parent.name.removesuffix("_video")
         index[(source, normalized_key(path.stem))].append(path)
     return index
@@ -505,6 +512,10 @@ def main() -> None:
     parser.add_argument("--val-ratio", type=float, default=0.10)
     parser.add_argument("--test-ratio", type=float, default=0.10)
     parser.add_argument("--seed", default="fsn-reviewer-split-v2")
+    parser.add_argument(
+        "--skip-video-sha256", action="store_true",
+        help="read container metadata without hashing every full video (faster for development)",
+    )
     parser.add_argument("--force", action="store_true", help="replace an existing generated output directory")
     args = parser.parse_args()
     if args.val_ratio <= 0 or args.test_ratio <= 0 or args.val_ratio + args.test_ratio >= 1:
@@ -527,7 +538,11 @@ def main() -> None:
     all_events: list[dict[str, Any]] = []
     seen_content: dict[str, str] = {}
 
-    for txt_path in sorted(txt_root.rglob("*.txt"), key=lambda p: p.as_posix()):
+    txt_paths = (
+        path for path in txt_root.rglob("*.txt")
+        if not path.name.startswith("._") and path.name != ".DS_Store"
+    )
+    for txt_path in sorted(txt_paths, key=lambda p: p.as_posix()):
         raw = txt_path.read_bytes()
         try:
             text = raw.decode("utf-8-sig")
@@ -552,7 +567,9 @@ def main() -> None:
         video_metadata = None
         if video_path:
             if video_path not in video_cache:
-                video_cache[video_path] = parse_video_metadata(video_path)
+                video_cache[video_path] = parse_video_metadata(
+                    video_path, compute_sha256=not args.skip_video_sha256
+                )
             video_metadata = video_cache[video_path]
         record_qc: list[str] = []
         if input_format in {"empty", "metadata_only", "unknown"}:

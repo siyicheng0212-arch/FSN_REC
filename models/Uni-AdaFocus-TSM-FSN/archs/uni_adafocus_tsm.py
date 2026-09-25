@@ -24,9 +24,11 @@ def get_patch_grid_scalexy(input_frames, action, image_size, patch_size, input_p
     theta[:, 0, 0], theta[:, 1, 1] = patch_size * patch_scale[:, 1] / image_size, patch_size * patch_scale[:, 0] / image_size
     theta[:, 0, 2], theta[:, 1, 2] = -1 + (x1 + x2) / image_size, -1 + (y1 + y2) / image_size
 
-    grid = F.affine_grid(theta.float(), torch.Size((batchsize, 3, patch_size, patch_size)))
+    grid = F.affine_grid(
+        theta.float(), torch.Size((batchsize, 3, patch_size, patch_size)), align_corners=False
+    )
 
-    patches = F.grid_sample(input_frames, grid)
+    patches = F.grid_sample(input_frames, grid, align_corners=False)
 
     return patches
 
@@ -191,6 +193,7 @@ class AdaFocus(nn.Module):
         self.fsn_interaction_mode = getattr(args, 'fsn_interaction', 'none')
         self.fsn_interaction_weight = getattr(args, 'fsn_interaction_weight', 0.2)
         self.fsn_local_grid_size = getattr(args, 'fsn_local_grid_size', 3)
+        self.mc_sample_times = getattr(args, 'mc_sample_times', 128)
         self.use_fsn_local_features = (
             self.fsn_local_adapter != 'none' or self.fsn_interaction_mode != 'none'
         )
@@ -297,7 +300,7 @@ class AdaFocus(nn.Module):
                 weights,
                 global_feature_dim=self.num_classes,
                 T1=self.num_glance_segments // 3,
-                sample_times=128,
+                sample_times=self.mc_sample_times,
                 device=self.device)
 
             action_3 = self.spatial_policy(global_feat_maps.detach().float())

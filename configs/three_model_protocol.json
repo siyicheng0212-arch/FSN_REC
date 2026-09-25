@@ -1,0 +1,54 @@
+{
+  "status": "formal_gpu_protocol_not_yet_run",
+  "dataset": {
+    "manifest_root": "processed_external/manifests",
+    "split_unit": "group_id",
+    "splits": ["train", "val", "test"],
+    "label_count": 7,
+    "test_usage": "once_after_model_selection"
+  },
+  "models": {
+    "adafocus_original": {
+      "implementation": "Uni-AdaFocus-TSM official path",
+      "frames": {"glance": 8, "focus_candidates": 36, "selected_focus": 12},
+      "crop_size": 128,
+      "initialization": "official SSv2 checkpoint, reset seven-class heads"
+    },
+    "adafocus_fsn": {
+      "implementation": "same backbone plus temporal adapter and cross-attention",
+      "frames": {"glance": 8, "focus_candidates": 36, "selected_focus": 12},
+      "crop_size": 128,
+      "initialization": "exact shared tensors from adafocus_original; new gates zero-initialized"
+    },
+    "videomamba_ti": {
+      "implementation": "OpenGVLab VideoMamba-Ti",
+      "frames": 8,
+      "crop_size": 224,
+      "initialization": "official SSv2 8-frame checkpoint, reset seven-class head",
+      "runtime": "Linux NVIDIA CUDA"
+    }
+  },
+  "training": {
+    "seeds": [42, 3407, 2026],
+    "selection_metric": "validation_macro_f1",
+    "class_imbalance": "train-only class-weighted cross entropy",
+    "max_epochs": 50,
+    "early_stopping_patience": 10,
+    "mixed_precision": true,
+    "gradient_accumulation": "set to match effective batch size across models"
+  },
+  "evaluation": {
+    "views": 1,
+    "spatial_crop": "center",
+    "metrics": [
+      "accuracy",
+      "macro_f1",
+      "micro_f1",
+      "weighted_f1",
+      "per_class_precision_recall_f1_support",
+      "confusion_matrix"
+    ],
+    "slices": ["source_collection", "duration_le_10s", "duration_gt_10s"],
+    "efficiency": ["total_parameters", "trainable_parameters", "peak_vram", "clips_per_second"]
+  }
+}

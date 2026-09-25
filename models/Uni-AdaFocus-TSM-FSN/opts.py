@@ -108,6 +108,8 @@ parser.add_argument('--fsn_interaction_dropout', type=float, default=0.1)
 parser.add_argument('--fsn_interaction_weight', type=float, default=0.2)
 parser.add_argument('--fsn_global_grid_size', type=int, default=3)
 parser.add_argument('--fsn_module_lr_ratio', type=float, default=1.0)
+parser.add_argument('--mc_sample_times', type=int, default=128,
+                    help='Monte Carlo samples for the temporal-policy auxiliary target')
 
 
 # ========================= DDP Configs ==========================

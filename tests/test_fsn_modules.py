@@ -5,10 +5,13 @@ from pathlib import Path
 import torch
 
 
-MODEL_ROOT = (
-    Path(__file__).resolve().parents[1]
-    / "models"
-    / "Uni-AdaFocus-TSM-FSN"
+ROOT = Path(__file__).resolve().parents[1]
+MODEL_ROOT = next(
+    path for path in (
+        ROOT / "third_party" / "Uni-AdaFocus" / "Uni-AdaFocus-TSM with Experiments on Sth-Sth V1&V2 and Jester",
+        ROOT / "models" / "Uni-AdaFocus-TSM-FSN",
+    )
+    if path.is_dir()
 )
 sys.path.insert(0, str(MODEL_ROOT))
 
@@ -50,7 +53,9 @@ class LocalContextInteractionTest(unittest.TestCase):
             self.assertEqual(tuple(logits.shape), (batch, 7))
             if mode == "cross_attention":
                 self.assertEqual(tuple(attention.shape), (batch, 36, 54))
-                self.assertEqual(module.beta.item(), 0.0)
+                self.assertEqual(module.beta.item(), 1.0)
+            self.assertEqual(module.gamma.item(), 0.0)
+            self.assertTrue(torch.equal(logits, torch.zeros_like(logits)))
             logits.sum().backward(retain_graph=True)
 
 

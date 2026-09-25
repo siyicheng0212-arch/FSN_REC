@@ -39,6 +39,17 @@ The FSN modules have standalone PyTorch tests:
 python -m unittest tests/test_fsn_modules.py -v
 ```
 
+## Runnable three-model pilot
+
+`experiments/` now provides a fail-fast video decoder/cache, unified metrics,
+model wrappers, baseline-equivalence checks, a three-model train/validation/test
+runner, and a one-clip overfit sanity test. Local manifests, decoded frames,
+predictions, and result files are gitignored.
+
+The CPU-runnable third architecture is MViT-V2-S for pipeline validation. The
+formal recent-model protocol uses VideoMamba-Ti on Linux CUDA; see
+`configs/three_model_protocol.json`.
+
 Full end-to-end training follows the official Uni-AdaFocus environment and
 requires the complete private video collection. No model-performance claim is
 made by this code release before those experiments are run.
