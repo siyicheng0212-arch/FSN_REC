@@ -220,7 +220,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "models": {},
     }
 
-    for model_name in MODEL_NAMES:
+    for model_name in args.models:
         print(f"\n=== {model_name} ===", flush=True)
         set_seed(args.seed)
         model = build_model(model_name, device)
@@ -310,6 +310,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=20260925)
     parser.add_argument("--device", default="auto")
     parser.add_argument("--cpu-threads", type=int, default=min(6, os.cpu_count() or 1))
+    parser.add_argument(
+        "--models",
+        nargs="+",
+        choices=MODEL_NAMES,
+        default=list(MODEL_NAMES),
+        help="comparison models to run, in order",
+    )
     args = parser.parse_args()
     if args.epochs <= 0 or args.batch_size <= 0:
         parser.error("epochs and batch-size must be positive")
