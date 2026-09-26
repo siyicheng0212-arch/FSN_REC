@@ -189,21 +189,21 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     manifests = args.manifest_dir.resolve()
     cache_dir = args.cache_dir.resolve()
 
-    loaders = {
+    eval_loaders = {
         split: make_loader(
             manifests / f"{split}.jsonl",
             cache_dir,
             batch_size=args.batch_size,
-            shuffle=split == "train",
+            shuffle=False,
             seed=args.seed,
         )
-        for split in ("train", "val", "test")
+        for split in ("val", "test")
     }
 
     set_seed(args.seed)
     initial_baseline = build_model("adafocus_original", device)
     baseline_state = clone_state(initial_baseline)
-    sample_video = next(iter(loaders["val"]))["video"][:1]
+    sample_video = next(iter(eval_loaders["val"]))["video"][:1]
     del initial_baseline
     gc.collect()
     equivalence = baseline_equivalence(device, baseline_state, sample_video)
@@ -229,6 +229,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             model.load_state_dict(baseline_state)
         elif model_name == "adafocus_fsn":
             load_report = load_shared_adafocus_weights(model, baseline_state)
+        # Recreate the shuffled train loader and reset RNG for every model so
+        # all three see the same sample order and stochastic starting state.
+        train_loader = make_loader(
+            manifests / "train.jsonl",
+            cache_dir,
+            batch_size=args.batch_size,
+            shuffle=True,
+            seed=args.seed,
+        )
+        set_seed(args.seed)
         optimizer = torch.optim.AdamW(
             [parameter for parameter in model.parameters() if parameter.requires_grad],
             lr=args.lr,
@@ -239,9 +249,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         best_macro_f1 = -1.0
         for epoch in range(args.epochs):
             train_loss, train_seconds, train_samples = train_one_epoch(
-                model, loaders["train"], device, optimizer, args.max_train_batches
+                model, train_loader, device, optimizer, args.max_train_batches
             )
-            val_metrics, _, val_seconds = evaluate(model, loaders["val"], device)
+            val_metrics, _, val_seconds = evaluate(model, eval_loaders["val"], device)
             macro_f1 = val_metrics["all"]["macro_f1"]
             history.append(
                 {
@@ -262,7 +272,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 best_macro_f1 = macro_f1
                 best_state = clone_state(model)
         model.load_state_dict(best_state)
-        test_metrics, predictions, test_seconds = evaluate(model, loaders["test"], device)
+        test_metrics, predictions, test_seconds = evaluate(model, eval_loaders["test"], device)
         prediction_path = output_dir / f"{model_name}_test_predictions.jsonl"
         with prediction_path.open("w", encoding="utf-8") as handle:
             for row in predictions:
