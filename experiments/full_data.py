@@ -17,7 +17,8 @@ import numpy as np
 from experiments.pilot_data import ClipRecord, VideoDecodeError, _get_ffmpeg_exe, load_pilot_manifest
 
 
-CACHE_VERSION = "fsn-full-uniform-ffmpeg-v1"
+CACHE_VERSION = "fsn-full-uniform-ffmpeg-v2-short-clip-audit"
+SHORT_CLIP_POLICY = "fixed-length uniform temporal positions with deterministic ffmpeg frame repetition"
 
 
 def cache_paths(cache_root: Path, record: ClipRecord) -> tuple[Path, Path]:
@@ -40,6 +41,8 @@ def request_digest(record: ClipRecord, num_frames: int, crop_size: int) -> str:
 
 
 def extract_clip(record: ClipRecord, num_frames: int, crop_size: int, timeout: float) -> np.ndarray:
+    if record.clip_duration_sec <= 0:
+        raise VideoDecodeError(f"clip {record.clip_id} has non-positive duration")
     if not Path(record.video_path).is_file():
         raise VideoDecodeError(f"source unavailable for {record.clip_id}")
     bin_width = record.clip_duration_sec / num_frames
@@ -111,7 +114,12 @@ def cache_one(record: ClipRecord, cache_root: Path, num_frames: int, crop_size: 
         "duration": record.clip_duration_sec,
         "num_frames": num_frames,
         "crop_size": crop_size,
+        "short_clip_sampling_policy": SHORT_CLIP_POLICY,
+        "pixel_unique_frames": len({
+            hashlib.sha256(frame.tobytes()).digest() for frame in frames
+        }),
     }
+    metadata["pixel_repeat_fraction"] = 1.0 - metadata["pixel_unique_frames"] / num_frames
     metadata_path.write_text(json.dumps(metadata, ensure_ascii=False) + "\n", encoding="utf-8")
     if not valid_cache(record, cache_root, num_frames, crop_size):
         raise RuntimeError(f"cache validation failed for {record.clip_id}")

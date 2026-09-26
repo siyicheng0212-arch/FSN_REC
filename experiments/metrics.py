@@ -288,6 +288,8 @@ def compute_classification_metrics(
     source_indices: dict[str, list[int]] = defaultdict(list)
     duration_le_10s: list[int] = []
     duration_gt_10s: list[int] = []
+    duration_lt_01s: list[int] = []
+    duration_ge_01s: list[int] = []
     duration_unknown = 0
     source_unknown = 0
 
@@ -302,8 +304,13 @@ def compute_classification_metrics(
             duration_unknown += 1
         elif duration <= 10.0:
             duration_le_10s.append(index)
+            if duration < 0.1:
+                duration_lt_01s.append(index)
+            else:
+                duration_ge_01s.append(index)
         else:
             duration_gt_10s.append(index)
+            duration_ge_01s.append(index)
 
     source_metrics = {
         source: _block_for_indices(predictions, target_tensor, indices, names)
@@ -323,6 +330,12 @@ def compute_classification_metrics(
             ),
             "duration_gt_10s": _block_for_indices(
                 predictions, target_tensor, duration_gt_10s, names
+            ),
+            "duration_lt_0.1s": _block_for_indices(
+                predictions, target_tensor, duration_lt_01s, names
+            ),
+            "duration_ge_0.1s": _block_for_indices(
+                predictions, target_tensor, duration_ge_01s, names
             ),
             "source_collection": source_metrics,
         },

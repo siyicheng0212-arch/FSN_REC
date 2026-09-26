@@ -5,7 +5,9 @@
     "split_unit": "group_id",
     "splits": ["train", "val", "test"],
     "label_count": 7,
-    "test_usage": "once_after_model_selection"
+    "test_usage": "once_after_model_selection",
+    "duration_policy": "retain every positive-duration canonical action; flag clips below 0.1 seconds",
+    "short_clip_sampling": "deterministic nearest-frame repetition to fixed input length"
   },
   "models": {
     "adafocus_original": {

@@ -96,6 +96,15 @@ class ClassificationMetricsTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "class ids"):
             compute_classification_metrics(self.logits[:2], torch.tensor([0, 7]), self.metadata[:2])
 
+    def test_very_short_duration_sensitivity_slices(self):
+        metadata = [
+            {"source": "a", "duration": 0.06},
+            {"source": "a", "duration": 0.10},
+        ]
+        result = compute_classification_metrics(self.logits[:2], self.targets[:2], metadata)
+        self.assertEqual(result["slices"]["duration_lt_0.1s"]["num_samples"], 1)
+        self.assertEqual(result["slices"]["duration_ge_0.1s"]["num_samples"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -57,3 +57,11 @@ For full AdaFocus training, first create the shared 36-frame cache with
 `python -m experiments.train_adafocus --variant original ...` and
 `--variant fsn ...` on separate GPUs. Both commands must use identical
 manifests, checkpoint, seed, batch size, accumulation, and optimizer settings.
+
+Formal manifests retain all positive-duration, canonically labelled actions.
+Clips shorter than 0.1 seconds are QC-flagged rather than automatically
+discarded. When a clip contains fewer than 36 source frames, FFmpeg
+deterministically repeats the nearest decoded frames to keep the input shape
+fixed. Cache metadata records `pixel_unique_frames` and
+`pixel_repeat_fraction`; primary results must be accompanied by a sensitivity
+analysis with these very short clips excluded.

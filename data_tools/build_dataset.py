@@ -121,13 +121,14 @@ def detect_format(text: str) -> str:
 
 def base_event(index: int, start: float, end: float, raw_label: str | None, line_number: int) -> dict[str, Any]:
     label, reasons = clean_label(raw_label)
+    qc_flags: list[str] = []
     if start < 0:
         reasons.append("negative_start")
     if end <= start:
         reasons.append("nonpositive_duration")
     duration = end - start
     if 0 < duration < 0.1:
-        reasons.append("duration_lt_0.1s")
+        qc_flags.append("duration_lt_0.1s_requires_repeated_frame_sampling")
     reasons = sorted(set(reasons))
     return {
         "event_index": index,
@@ -140,7 +141,7 @@ def base_event(index: int, start: float, end: float, raw_label: str | None, line
         "source_line_number": line_number,
         "supervision_status": "excluded" if reasons else "included",
         "exclusion_reasons": reasons,
-        "qc_flags": [],
+        "qc_flags": qc_flags,
     }
 
 
@@ -813,7 +814,7 @@ def main() -> None:
         "canonical_labels_in_id_order": CANONICAL_LABELS,
         "raw_to_normalized": LABEL_MAP,
         "excluded_label_policy": "Unmapped, blank, or ambiguous labels remain in events_all.jsonl but not clip manifests.",
-        "minimum_supervised_clip_duration_sec": 0.1,
+        "duration_policy": "all positive-duration canonical labels are supervised; clips below 0.1s are QC-flagged and use deterministic repeated-frame sampling",
     }
     json_dump(output / "meta_data" / "label_policy.json", label_policy)
 
@@ -950,6 +951,10 @@ def main() -> None:
     json_dump(output / "meta_data" / "dataset_summary.json", summary)
 
     dictionary = f"""# FSN 规范化数据说明\n\n## 统一结构\n\n- `meta_data/records.jsonl`：每个原始 TXT 一条记录，保存路径、SHA-256、EAF URI、标注时间、解析格式、视频属性、分组、split 和 QC。\n- `meta_data/events_all.jsonl`：每个原始时间段一条记录；包括空标签、歧义标签和被排除事件。\n- `meta_data/identity_map_template.csv`：患者、术者、治疗 session 和机构映射模板。\n- `annotations/*.json`：按原始记录组织的统一 JSON。\n- `manifests/train.jsonl`、`val.jsonl`、`test.jsonl`：8:1:1 可监督 clip 清单。\n- `manifests/source_holdout/*/`：逐来源留一的域外测试清单。\n- `manifests/clips_all.csv`：与 clip JSONL 等价的 UTF-8-BOM 表格。\n\n## 清洗原则\n\n1. 三种原始格式统一为秒级 `start_sec/end_sec/duration_sec`。\n2. 原始标签永远保存在 `raw_label`；`normalized_label` 依据 `label_policy.json` 生成。\n3. 空标签、歧义/非规范标签、非正时长、短于 0.1 秒的事件不进入监督 clip，但仍保留。\n4. 完全相同的 TXT 只保留一个用于建模，副本标记 `duplicate_of_record_id`。\n5. 源 TXT 不修改；当前样例视频还额外保存文件哈希、帧数、帧率、编码、时长和分辨率。\n\n## 默认划分原则\n\n- 请求比例：train={1-args.val_ratio-args.test_ratio:.2%}、val={args.val_ratio:.2%}、test={args.test_ratio:.2%}；seed=`{args.seed}`。\n- 先按来源分层，再按 `group_id` 整组分配；clip 继承记录 split。\n- 能识别 `ACU###` 时按患者码分组；其余在身份表未填写前只能按原始记录分组，明确标为低可信度。\n- 目前的 8:1:1 是可运行的 provisional split，不能冒充完整的 patient/practitioner-independent split。\n- 填写 `identity_map_template.csv` 后应重建严格的患者、术者或联合身份隔离协议。\n- 来源留一 folds 用于测量 domain shift，但不能替代真正新增机构/新增患者的外部验证集。\n\n## 当前快照\n\n- 原始 TXT：{len(records)}\n- 当前可用视频：{summary['input']['available_video_files']}\n- train/val/test/excluded 记录：{summary['records_by_split']}\n- 可监督 clips：{len(clips)}\n- 泄漏检查：`groups_in_multiple_splits`、`exact_txt_hashes_in_multiple_splits`、`exact_video_hashes_in_multiple_splits` 均应为空。\n"""
+    dictionary = dictionary.replace(
+        "空标签、歧义/非规范标签、非正时长、短于 0.1 秒的事件不进入监督 clip，但仍保留。",
+        "空标签、歧义/非规范标签和非正时长事件不进入监督集；正时长短动作保留，低于 0.1 秒者加 QC 并采用确定性重复帧采样。",
+    )
     (output / "meta_data" / "DATA_DICTIONARY.md").write_text(dictionary, encoding="utf-8")
 
     print(json.dumps({
