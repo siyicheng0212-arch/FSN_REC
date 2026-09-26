@@ -107,6 +107,7 @@ class AdaFocusFSN(FSNModel):
         self.num_glance_segments = num_glance_segments
         self.num_input_focus_segments = num_input_focus_segments
         self.num_focus_segments = num_focus_segments
+        self.register_buffer("class_weights", None)
         self.core = AdaFocus(
             num_classes,
             _adafocus_args(
@@ -119,6 +120,12 @@ class AdaFocusFSN(FSNModel):
                 mc_sample_times,
             ),
         )
+
+    def set_class_weights(self, weights: torch.Tensor | None) -> None:
+        self.class_weights = None if weights is None else weights.detach().clone()
+
+    def _ce(self, logits: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        return F.cross_entropy(logits, target, weight=self.class_weights)
 
     @staticmethod
     def _take_uniform(frames: torch.Tensor, count: int) -> tuple[torch.Tensor, torch.Tensor]:
@@ -156,14 +163,14 @@ class AdaFocusFSN(FSNModel):
 
     def compute_loss(self, output: dict[str, Any], target: torch.Tensor) -> torch.Tensor:
         if "policy_branch" not in output:
-            return F.cross_entropy(output["logits"], target)
+            return self._ce(output["logits"], target)
         p1 = output["random_branch"]
         p2 = output["policy_branch"]
-        loss_target = F.cross_entropy(p1[0], target) + F.cross_entropy(p2[0], target)
-        loss_global = F.cross_entropy(p1[1], target) + F.cross_entropy(p2[1], target)
-        loss_local = F.cross_entropy(p1[2], target) + F.cross_entropy(p2[2], target)
-        loss_temporal = F.cross_entropy(p1[3], target) + F.cross_entropy(p2[3], target)
-        loss_spatial = F.cross_entropy(p1[4], target) + F.cross_entropy(p2[4], target)
+        loss_target = self._ce(p1[0], target) + self._ce(p2[0], target)
+        loss_global = self._ce(p1[1], target) + self._ce(p2[1], target)
+        loss_local = self._ce(p1[2], target) + self._ce(p2[2], target)
+        loss_temporal = self._ce(p1[3], target) + self._ce(p2[3], target)
+        loss_spatial = self._ce(p1[4], target) + self._ce(p2[4], target)
         target_scale = torch.ones_like(p1[6][:, 2:4])
         loss_norm = ((p1[6][:, 2:4] - target_scale) ** 2).mean()
         return (
@@ -225,5 +232,44 @@ def load_shared_adafocus_weights(modified: AdaFocusFSN, baseline_state: dict[str
     }
 
 
+def load_official_adafocus_checkpoint(
+    model: AdaFocusFSN,
+    checkpoint_path: str | Path,
+) -> dict[str, Any]:
+    """Load shape-compatible official weights while resetting seven-class heads."""
+    checkpoint_path = Path(checkpoint_path)
+    if not checkpoint_path.is_file():
+        raise FileNotFoundError(checkpoint_path)
+    try:
+        checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+    except TypeError:
+        checkpoint = torch.load(checkpoint_path, map_location="cpu")
+    source = checkpoint.get("state_dict", checkpoint)
+    if not isinstance(source, dict):
+        raise ValueError("checkpoint does not contain a state dict")
+    target = model.state_dict()
+    classifier_tokens = ("new_fc", "new_new_fc", "aux_fc")
+    compatible: dict[str, torch.Tensor] = {}
+    skipped_heads: list[str] = []
+    skipped_shape: list[str] = []
+    for raw_key, value in source.items():
+        key = raw_key.removeprefix("module.")
+        key = key if key.startswith("core.") else "core." + key
+        if any(token in key for token in classifier_tokens):
+            skipped_heads.append(raw_key)
+            continue
+        if key not in target or target[key].shape != value.shape:
+            skipped_shape.append(raw_key)
+            continue
+        compatible[key] = value
+    result = model.load_state_dict(compatible, strict=False)
+    return {
+        "checkpoint": str(checkpoint_path),
+        "loaded_tensors": len(compatible),
+        "skipped_head_tensors": len(skipped_heads),
+        "skipped_shape_or_unknown_tensors": len(skipped_shape),
+        "missing_keys": list(result.missing_keys),
+        "unexpected_keys": list(result.unexpected_keys),
+    }
 def trainable_parameter_count(model: nn.Module) -> int:
     return sum(parameter.numel() for parameter in model.parameters() if parameter.requires_grad)

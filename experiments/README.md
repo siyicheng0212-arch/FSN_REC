@@ -51,3 +51,9 @@ See `configs/three_model_protocol.json`.  The two AdaFocus models must start
 from the exact same official checkpoint.  Validation macro-F1 chooses the
 checkpoint; test is evaluated once.  Save clip-level logits and report class,
 source, and duration slices from the same prediction files.
+
+For full AdaFocus training, first create the shared 36-frame cache with
+`python -m experiments.full_data cache`, then launch
+`python -m experiments.train_adafocus --variant original ...` and
+`--variant fsn ...` on separate GPUs. Both commands must use identical
+manifests, checkpoint, seed, batch size, accumulation, and optimizer settings.
