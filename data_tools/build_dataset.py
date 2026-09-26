@@ -536,14 +536,36 @@ def main() -> None:
     video_cache: dict[Path, dict[str, Any]] = {}
     records: list[dict[str, Any]] = []
     all_events: list[dict[str, Any]] = []
-    seen_content: dict[str, str] = {}
 
-    txt_paths = (
+    txt_paths = sorted((
         path for path in txt_root.rglob("*.txt")
         if not path.name.startswith("._") and path.name != ".DS_Store"
-    )
-    for txt_path in sorted(txt_paths, key=lambda p: p.as_posix()):
-        raw = txt_path.read_bytes()
+    ), key=lambda p: p.as_posix())
+    raw_by_path = {path: path.read_bytes() for path in txt_paths}
+    paths_by_hash: dict[str, list[Path]] = defaultdict(list)
+    for path, raw in raw_by_path.items():
+        paths_by_hash[sha256_bytes(raw)].append(path)
+
+    def duplicate_preference(path: Path) -> tuple[int, int, str]:
+        source_dir = path.relative_to(txt_root).parts[0]
+        source = source_dir.removesuffix("_txt")
+        media_key = media_key_from_txt(path)
+        candidates = video_index.get((source, normalized_key(media_key)), [])
+        # Prefer the duplicate whose filename uniquely resolves to an existing
+        # video. This prevents renamed upload copies from becoming canonical.
+        return (0 if len(candidates) == 1 else 1, len(path.relative_to(txt_root).parts), path.as_posix())
+
+    canonical_by_hash = {
+        content_hash: min(paths, key=duplicate_preference)
+        for content_hash, paths in paths_by_hash.items()
+    }
+    canonical_record_by_hash: dict[str, str] = {}
+    for content_hash, canonical_path in canonical_by_hash.items():
+        source = canonical_path.relative_to(txt_root).parts[0].removesuffix("_txt")
+        canonical_record_by_hash[content_hash] = f"{source}-{stable_hash(relpath(canonical_path, workspace), 16)}"
+
+    for txt_path in txt_paths:
+        raw = raw_by_path[txt_path]
         try:
             text = raw.decode("utf-8-sig")
             encoding = "utf-8-sig"
@@ -559,9 +581,10 @@ def main() -> None:
         events = parse_events(text, input_format)
         metadata = extract_header_metadata(text)
         content_hash = sha256_bytes(raw)
-        duplicate_of = seen_content.get(content_hash)
-        if duplicate_of is None:
-            seen_content[content_hash] = record_id
+        duplicate_of = (
+            None if txt_path == canonical_by_hash[content_hash]
+            else canonical_record_by_hash[content_hash]
+        )
         candidates = video_index.get((source, normalized_key(media_key)), [])
         video_path = candidates[0] if len(candidates) == 1 else None
         video_metadata = None
@@ -901,6 +924,12 @@ def main() -> None:
         },
         "source_holdout_protocols": source_holdout_summary,
         "video_link_status": dict(sorted(Counter(record["video_link_status"] for record in records).items())),
+        "eligible_video_link_status": dict(sorted(Counter(
+            record["video_link_status"] for record in eligible_records
+        ).items())),
+        "clip_materialization_status": dict(sorted(Counter(
+            clip["materialization_status"] for clip in clips
+        ).items())),
         "record_qc_flags": dict(sorted(Counter(flag for record in records for flag in record["qc_flags"]).items())),
         "event_exclusion_reasons": dict(sorted(Counter(
             reason for event in all_events for reason in event["exclusion_reasons"]
