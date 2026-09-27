@@ -15,7 +15,11 @@ MODEL_ROOT = next(
 )
 sys.path.insert(0, str(MODEL_ROOT))
 
-from archs.fsn_modules import LocalContextInteraction, LocalTemporalAdapter  # noqa: E402
+from archs.fsn_modules import (  # noqa: E402
+    LocalContextInteraction,
+    LocalTemporalAdapter,
+    OrderedTemporalPool,
+)
 
 
 class LocalTemporalAdapterTest(unittest.TestCase):
@@ -57,6 +61,29 @@ class LocalContextInteractionTest(unittest.TestCase):
             self.assertEqual(module.gamma.item(), 0.0)
             self.assertTrue(torch.equal(logits, torch.zeros_like(logits)))
             logits.sum().backward(retain_graph=True)
+
+    def test_zero_head_is_equivalent_but_classifier_receives_gradient(self):
+        module = LocalContextInteraction(
+            16, 12, 8, 7, mode="cross_attention", heads=2,
+            dropout=0.0, output_init="zero_head",
+        )
+        local = torch.randn(2, 4, 16, 2, 2)
+        global_ = torch.randn(2, 3, 12, 2, 2)
+        local_positions = torch.rand(2, 4)
+        global_positions = torch.rand(2, 3)
+        logits, _ = module(local, global_, local_positions, global_positions)
+        self.assertTrue(torch.equal(logits, torch.zeros_like(logits)))
+        self.assertEqual(module.gamma.item(), 1.0)
+        logits.sum().backward()
+        self.assertGreater(float(module.classifier[-1].weight.grad.abs().sum()), 0.0)
+
+    def test_ordered_pool_is_order_sensitive(self):
+        torch.manual_seed(7)
+        pool = OrderedTemporalPool(8)
+        sequence = torch.randn(2, 5, 8)
+        forward = pool(sequence)
+        backward = pool(sequence.flip(1))
+        self.assertFalse(torch.allclose(forward, backward))
 
 
 if __name__ == "__main__":
