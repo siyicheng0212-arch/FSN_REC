@@ -66,6 +66,47 @@ class ContinuousTimeEncoding(nn.Module):
         return self.net(positions.unsqueeze(-1).float())
 
 
+class OrderedTemporalPool(nn.Module):
+    """Pool a temporal sequence without discarding motion direction.
+
+    Mean pooling is invariant to frame order.  That is a poor match for the
+    sweep/reperfusion distinction, where endpoint direction and motion amount
+    matter.  This small head keeps the level feature plus signed and absolute
+    temporal differences at one- and two-step scales.
+    """
+
+    def __init__(self, dim):
+        super().__init__()
+        self.projection = nn.Linear(dim * 5, dim)
+        self.activation = nn.GELU()
+        self.norm = nn.LayerNorm(dim)
+
+    @staticmethod
+    def _difference_summary(sequence, lag):
+        if sequence.shape[1] <= lag:
+            zeros = sequence.new_zeros(sequence.shape[0], sequence.shape[2])
+            return zeros, zeros
+        difference = sequence[:, lag:] - sequence[:, :-lag]
+        return difference.mean(dim=1), difference.abs().mean(dim=1)
+
+    def forward(self, sequence):
+        if sequence.ndim != 3:
+            raise ValueError("sequence must have shape [B, T, D]")
+        signed_1, magnitude_1 = self._difference_summary(sequence, 1)
+        signed_2, magnitude_2 = self._difference_summary(sequence, 2)
+        features = torch.cat(
+            [
+                sequence.mean(dim=1),
+                signed_1,
+                magnitude_1,
+                signed_2,
+                magnitude_2,
+            ],
+            dim=-1,
+        )
+        return self.norm(self.activation(self.projection(features)))
+
+
 class LocalContextInteraction(nn.Module):
     """Classify pooled local/global evidence after optional cross-attention.
 
@@ -86,14 +127,22 @@ class LocalContextInteraction(nn.Module):
         dropout=0.1,
         local_grid_size=3,
         global_grid_size=3,
+        pooling="mean",
+        output_init="gated",
     ):
         super().__init__()
         if mode not in {"mlp", "cross_attention"}:
             raise ValueError("mode must be 'mlp' or 'cross_attention'")
         if dim % heads:
             raise ValueError("interaction dim must be divisible by attention heads")
+        if pooling not in {"mean", "ordered_difference"}:
+            raise ValueError("pooling must be 'mean' or 'ordered_difference'")
+        if output_init not in {"gated", "zero_head"}:
+            raise ValueError("output_init must be 'gated' or 'zero_head'")
         self.mode = mode
         self.dim = dim
+        self.pooling = pooling
+        self.output_init = output_init
         self.local_grid_size = local_grid_size
         self.global_grid_size = global_grid_size
         self.local_projection = nn.Conv2d(local_channels, dim, kernel_size=1, bias=False)
@@ -113,6 +162,12 @@ class LocalContextInteraction(nn.Module):
             self.cross_attention = None
             self.attention_norm = None
             self.register_parameter("beta", None)
+        if pooling == "ordered_difference":
+            self.local_pool = OrderedTemporalPool(dim)
+            self.global_pool = OrderedTemporalPool(dim)
+        else:
+            self.local_pool = None
+            self.global_pool = None
         self.classifier = nn.Sequential(
             nn.LayerNorm(dim * 2),
             nn.Linear(dim * 2, dim),
@@ -120,9 +175,17 @@ class LocalContextInteraction(nn.Module):
             nn.Dropout(dropout),
             nn.Linear(dim, num_classes),
         )
-        # Keep the complete interaction correction output-equivalent to the
-        # baseline when loading a baseline checkpoint.
-        self.gamma = nn.Parameter(torch.zeros(1))
+        if output_init == "zero_head":
+            # Preserve exact baseline logits while allowing the correction
+            # head to receive gradients immediately.  The old zero gamma gate
+            # only trained gamma on step one and remained effectively dormant
+            # in the formal FSN run (|gamma| < 5e-6).
+            nn.init.zeros_(self.classifier[-1].weight)
+            nn.init.zeros_(self.classifier[-1].bias)
+            self.gamma = nn.Parameter(torch.ones(1))
+        else:
+            # Backward-compatible FSN-v1 initialization.
+            self.gamma = nn.Parameter(torch.zeros(1))
 
     @staticmethod
     def _project_grid(features, projection, grid_size):
@@ -154,7 +217,17 @@ class LocalContextInteraction(nn.Module):
                 need_weights=return_attention,
             )
             local_tokens = local_tokens + self.beta * update
-        local_pooled = local_tokens.mean(dim=1)
-        global_pooled = global_tokens.mean(dim=1)
+        if self.pooling == "ordered_difference":
+            local_sequence = local_tokens.reshape(
+                batch, local.shape[1], local.shape[2], self.dim
+            ).mean(dim=2)
+            global_sequence = global_tokens.reshape(
+                batch, global_.shape[1], global_.shape[2], self.dim
+            ).mean(dim=2)
+            local_pooled = self.local_pool(local_sequence)
+            global_pooled = self.global_pool(global_sequence)
+        else:
+            local_pooled = local_tokens.mean(dim=1)
+            global_pooled = global_tokens.mean(dim=1)
         logits = self.gamma * self.classifier(torch.cat([local_pooled, global_pooled], dim=-1))
         return logits, attention
