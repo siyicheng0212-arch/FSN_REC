@@ -41,12 +41,17 @@ class FSNModel(nn.Module):
 def _adafocus_args(
     device: torch.device,
     modified: bool,
+    fsn_variant: str,
     num_glance_segments: int,
     num_input_focus_segments: int,
     num_focus_segments: int,
     patch_size: int,
     mc_sample_times: int,
 ) -> SimpleNamespace:
+    if fsn_variant not in {"v1", "active_mean", "v2"}:
+        raise ValueError(f"unknown FSN variant: {fsn_variant}")
+    interaction_pooling = "ordered_difference" if fsn_variant == "v2" else "mean"
+    interaction_output_init = "gated" if fsn_variant == "v1" else "zero_head"
     return SimpleNamespace(
         num_glance_segments=num_glance_segments,
         num_input_focus_segments=num_input_focus_segments,
@@ -82,6 +87,8 @@ def _adafocus_args(
         fsn_interaction_heads=4,
         fsn_interaction_dropout=0.1,
         fsn_global_grid_size=3,
+        fsn_interaction_pooling=interaction_pooling,
+        fsn_interaction_output_init=interaction_output_init,
         fsn_module_lr_ratio=1.0,
         mc_sample_times=mc_sample_times,
         global_lr_ratio=0.5,
@@ -97,6 +104,7 @@ class AdaFocusFSN(FSNModel):
         self,
         num_classes: int = 7,
         modified: bool = False,
+        fsn_variant: str = "v1",
         device: torch.device | None = None,
         num_glance_segments: int = 4,
         num_input_focus_segments: int = 8,
@@ -106,7 +114,8 @@ class AdaFocusFSN(FSNModel):
     ) -> None:
         super().__init__()
         device = device or torch.device("cpu")
-        self.model_name = "adafocus_fsn" if modified else "adafocus_original"
+        self.fsn_variant = fsn_variant
+        self.model_name = f"adafocus_fsn_{fsn_variant}" if modified else "adafocus_original"
         self.num_glance_segments = num_glance_segments
         self.num_input_focus_segments = num_input_focus_segments
         self.num_focus_segments = num_focus_segments
@@ -116,6 +125,7 @@ class AdaFocusFSN(FSNModel):
             _adafocus_args(
                 device,
                 modified,
+                fsn_variant,
                 num_glance_segments,
                 num_input_focus_segments,
                 num_focus_segments,
@@ -213,6 +223,14 @@ def build_model(name: str, device: torch.device, num_classes: int = 7) -> FSNMod
         model = AdaFocusFSN(num_classes=num_classes, modified=False, device=device)
     elif name == "adafocus_fsn":
         model = AdaFocusFSN(num_classes=num_classes, modified=True, device=device)
+    elif name == "adafocus_fsn_active_mean":
+        model = AdaFocusFSN(
+            num_classes=num_classes, modified=True, fsn_variant="active_mean", device=device
+        )
+    elif name == "adafocus_fsn_v2":
+        model = AdaFocusFSN(
+            num_classes=num_classes, modified=True, fsn_variant="v2", device=device
+        )
     elif name == "mvit_v2_s_reference":
         model = MViTV2Reference(num_classes=num_classes)
     else:

@@ -136,7 +136,12 @@ def make_model(args: argparse.Namespace, device: torch.device) -> tuple[AdaFocus
     if args.variant == "original":
         return baseline.to(device), checkpoint_report
     seed_all(args.seed)
-    modified = AdaFocusFSN(modified=True, **common)
+    variant_map = {
+        "fsn": "v1",
+        "fsn_active_mean": "active_mean",
+        "fsn_v2": "v2",
+    }
+    modified = AdaFocusFSN(modified=True, fsn_variant=variant_map[args.variant], **common)
     shared_report = load_shared_adafocus_weights(modified, baseline_state)
     del baseline, baseline_state
     gc.collect()
@@ -432,7 +437,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--variant", choices=("original", "fsn"), required=True)
+    parser.add_argument(
+        "--variant",
+        choices=("original", "fsn", "fsn_active_mean", "fsn_v2"),
+        required=True,
+    )
     parser.add_argument("--manifest-dir", type=Path, default=Path("processed_server/manifests"))
     parser.add_argument("--cache-dir", type=Path, default=Path("full_cache_36f224"))
     parser.add_argument("--output-dir", type=Path, default=Path("formal_results"))

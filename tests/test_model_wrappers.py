@@ -32,6 +32,24 @@ class AdaFocusWrapperTest(unittest.TestCase):
         identifiers = [id(parameter) for parameter in model.parameters()]
         self.assertEqual(len(identifiers), len(set(identifiers)))
 
+    def test_v2_is_equivalent_and_uses_active_zero_head(self):
+        torch.manual_seed(11)
+        original = build_model("adafocus_original", torch.device("cpu")).eval()
+        state = {key: value.detach().clone() for key, value in original.state_dict().items()}
+        torch.manual_seed(23)
+        modified = build_model("adafocus_fsn_v2", torch.device("cpu")).eval()
+        load_shared_adafocus_weights(modified, state)
+        frames = torch.rand(1, 8, 3, 224, 224)
+        with torch.no_grad():
+            original_logits = original(frames)["logits"]
+            modified_logits = modified(frames)["logits"]
+        self.assertLessEqual(float((original_logits - modified_logits).abs().max()), 1e-5)
+        self.assertEqual(modified.core.fsn_interaction.gamma.item(), 1.0)
+        self.assertEqual(modified.core.fsn_interaction.pooling, "ordered_difference")
+        self.assertEqual(
+            float(modified.core.fsn_interaction.classifier[-1].weight.abs().sum()), 0.0
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

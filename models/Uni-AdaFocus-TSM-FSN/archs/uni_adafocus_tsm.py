@@ -247,6 +247,8 @@ class AdaFocus(nn.Module):
                 dropout=getattr(args, 'fsn_interaction_dropout', 0.1),
                 local_grid_size=self.fsn_local_grid_size,
                 global_grid_size=getattr(args, 'fsn_global_grid_size', 3),
+                pooling=getattr(args, 'fsn_interaction_pooling', 'mean'),
+                output_init=getattr(args, 'fsn_interaction_output_init', 'gated'),
             )
         else:
             self.fsn_interaction = None
