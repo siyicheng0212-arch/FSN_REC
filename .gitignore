@@ -12,6 +12,8 @@ ckpt/
 log/
 logs/
 runs/
+remote_logs/
+.last_run_commit
 *.pth
 *.pth.tar
 *.pt

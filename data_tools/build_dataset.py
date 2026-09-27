@@ -22,7 +22,7 @@ from typing import Any, BinaryIO, Iterable
 
 
 SCHEMA_VERSION = "fsn-normalized-2.0"
-SPLIT_POLICY_VERSION = "grouped-source-stratified-8-1-1-v2.0"
+SPLIT_POLICY_VERSION = "grouped-source-stratified-8-1-1-v2.1"
 CANONICAL_LABELS = ["消毒", "进针", "运针", "扫散", "再灌注", "拔针", "固定"]
 LABEL_TO_ID = {label: idx for idx, label in enumerate(CANONICAL_LABELS)}
 LABEL_MAP = {
@@ -63,6 +63,17 @@ def media_key_from_txt(path: Path) -> str:
     if suffix in VIDEO_EXTENSIONS:
         name = name[: -len(suffix)]
     return name
+
+
+def upload_copy_suffix_rank(media_key: str) -> int:
+    """Rank uploader-created numeric copies behind the unsuffixed original.
+
+    Cloud drives commonly flatten a second copy of ``sample.txt`` to
+    ``sample-1.txt``.  This rank is only used *within an exact-content hash
+    group*, so a legitimately different recording ending in ``-1`` is never
+    discarded merely because of its name.
+    """
+    return 1 if re.search(r"-\d+$", normalized_key(media_key)) else 0
 
 
 def parse_time(value: str) -> float:
@@ -428,6 +439,28 @@ def build_video_index(video_root: Path) -> dict[tuple[str, str], list[Path]]:
     return index
 
 
+def duplicate_preference_key(
+    path: Path,
+    txt_root: Path,
+    video_index: dict[tuple[str, str], list[Path]],
+) -> tuple[int, int, int, str]:
+    """Choose the canonical path inside one exact-content TXT hash group."""
+    source_dir = path.relative_to(txt_root).parts[0]
+    source = source_dir.removesuffix("_txt")
+    media_key = media_key_from_txt(path)
+    candidates = video_index.get((source, normalized_key(media_key)), [])
+    # Prefer a unique video match. When neither exact TXT copy resolves,
+    # prefer the unsuffixed original over uploader-created names such as
+    # ``sample-1.txt``. This keeps missing-media reports stable and avoids
+    # presenting an upload artifact as a distinct recording.
+    return (
+        0 if len(candidates) == 1 else 1,
+        upload_copy_suffix_rank(media_key),
+        len(path.relative_to(txt_root).parts),
+        path.as_posix(),
+    )
+
+
 def subset_near_target(group_sizes: dict[str, int], target: int, seed_scope: str) -> set[str]:
     """Deterministically choose whole groups with total size nearest target."""
     groups = sorted(group_sizes, key=lambda group: stable_hash(f"{seed_scope}|{group}", 64))
@@ -547,17 +580,11 @@ def main() -> None:
     for path, raw in raw_by_path.items():
         paths_by_hash[sha256_bytes(raw)].append(path)
 
-    def duplicate_preference(path: Path) -> tuple[int, int, str]:
-        source_dir = path.relative_to(txt_root).parts[0]
-        source = source_dir.removesuffix("_txt")
-        media_key = media_key_from_txt(path)
-        candidates = video_index.get((source, normalized_key(media_key)), [])
-        # Prefer the duplicate whose filename uniquely resolves to an existing
-        # video. This prevents renamed upload copies from becoming canonical.
-        return (0 if len(candidates) == 1 else 1, len(path.relative_to(txt_root).parts), path.as_posix())
-
     canonical_by_hash = {
-        content_hash: min(paths, key=duplicate_preference)
+        content_hash: min(
+            paths,
+            key=lambda path: duplicate_preference_key(path, txt_root, video_index),
+        )
         for content_hash, paths in paths_by_hash.items()
     }
     canonical_record_by_hash: dict[str, str] = {}
@@ -735,6 +762,34 @@ def main() -> None:
     write_jsonl(output / "manifests" / "val.jsonl", (clip for clip in clips if clip["split"] == "val"))
     write_jsonl(output / "manifests" / "test.jsonl", (clip for clip in clips if clip["split"] == "test"))
     write_jsonl(output / "manifests" / "excluded_records.jsonl", (r for r in records if r["split"] == "excluded"))
+
+    duplicate_fields = [
+        "duplicate_record_id", "canonical_record_id", "source_collection",
+        "duplicate_txt_path", "canonical_txt_path", "source_txt_sha256",
+        "duplicate_media_key", "canonical_media_key", "upload_copy_suffix",
+    ]
+    canonical_records = {record["record_id"]: record for record in records}
+    with (output / "meta_data" / "exact_txt_duplicate_audit.csv").open(
+        "w", encoding="utf-8-sig", newline=""
+    ) as handle:
+        writer = csv.DictWriter(handle, fieldnames=duplicate_fields)
+        writer.writeheader()
+        for duplicate in sorted(
+            (record for record in records if record["duplicate_of_record_id"]),
+            key=lambda record: record["source_txt_path"],
+        ):
+            canonical = canonical_records[duplicate["duplicate_of_record_id"]]
+            writer.writerow({
+                "duplicate_record_id": duplicate["record_id"],
+                "canonical_record_id": canonical["record_id"],
+                "source_collection": duplicate["source_collection"],
+                "duplicate_txt_path": duplicate["source_txt_path"],
+                "canonical_txt_path": canonical["source_txt_path"],
+                "source_txt_sha256": duplicate["source_txt_sha256"],
+                "duplicate_media_key": duplicate["media_key"],
+                "canonical_media_key": canonical["media_key"],
+                "upload_copy_suffix": bool(upload_copy_suffix_rank(duplicate["media_key"])),
+            })
 
     identity_fields = [
         "record_id", "source_collection", "source_txt_path", "media_key", "patient_id",
@@ -954,6 +1009,14 @@ def main() -> None:
     dictionary = dictionary.replace(
         "空标签、歧义/非规范标签、非正时长、短于 0.1 秒的事件不进入监督 clip，但仍保留。",
         "空标签、歧义/非规范标签和非正时长事件不进入监督集；正时长短动作保留，低于 0.1 秒者加 QC 并采用确定性重复帧采样。",
+    )
+    dictionary = dictionary.replace(
+        "- `meta_data/identity_map_template.csv`：",
+        "- `meta_data/exact_txt_duplicate_audit.csv`：完全重复 TXT 与保留原件的哈希、路径和 `-1` 上传副本标记。\n"
+        "- `meta_data/identity_map_template.csv`：",
+    ).replace(
+        "副本标记 `duplicate_of_record_id`。",
+        "副本标记 `duplicate_of_record_id`；同哈希组内的 `-1` 数字后缀文件优先视为上传副本。",
     )
     (output / "meta_data" / "DATA_DICTIONARY.md").write_text(dictionary, encoding="utf-8")
 

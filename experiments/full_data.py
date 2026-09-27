@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import subprocess
 import tempfile
@@ -19,6 +20,11 @@ from experiments.pilot_data import ClipRecord, VideoDecodeError, _get_ffmpeg_exe
 
 CACHE_VERSION = "fsn-full-uniform-ffmpeg-v2-short-clip-audit"
 SHORT_CLIP_POLICY = "fixed-length uniform temporal positions with deterministic ffmpeg frame repetition"
+MIN_DECODED_FRAME_FRACTION = 0.80
+DECODE_PADDING_POLICY = (
+    "clone the final decoded frame only when ffmpeg returns at least 80% of "
+    "the requested frames; retain decoded/padded counts in cache metadata"
+)
 
 
 def cache_paths(cache_root: Path, record: ClipRecord) -> tuple[Path, Path]:
@@ -40,14 +46,23 @@ def request_digest(record: ClipRecord, num_frames: int, crop_size: int) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def extract_clip(record: ClipRecord, num_frames: int, crop_size: int, timeout: float) -> np.ndarray:
+def _extract_clip_with_audit(
+    record: ClipRecord,
+    num_frames: int,
+    crop_size: int,
+    timeout: float,
+) -> tuple[np.ndarray, dict[str, int]]:
     if record.clip_duration_sec <= 0:
         raise VideoDecodeError(f"clip {record.clip_id} has non-positive duration")
     if not Path(record.video_path).is_file():
         raise VideoDecodeError(f"source unavailable for {record.clip_id}")
     bin_width = record.clip_duration_sec / num_frames
     first_timestamp = record.clip_start_sec + 0.5 * bin_width
-    sampling_seconds = max(record.clip_end_sec - first_timestamp, bin_width)
+    # Give FFmpeg one complete clip-duration window from the first bin centre.
+    # Output is still capped at ``num_frames``, so the requested timestamps end
+    # at the final bin centre.  The former half-bin-short window could round to
+    # 35 frames for a 36-frame request on otherwise valid videos.
+    sampling_seconds = record.clip_duration_sec
     fps = 1.0 / bin_width
     video_filter = (
         f"fps={fps:.12f},"
@@ -68,15 +83,40 @@ def extract_clip(record: ClipRecord, num_frames: int, crop_size: int, timeout: f
         )
     except subprocess.TimeoutExpired as exc:
         raise VideoDecodeError(f"decode timeout for {record.clip_id}") from exc
-    expected = num_frames * crop_size * crop_size * 3
-    if completed.returncode != 0 or len(completed.stdout) != expected:
+    frame_bytes = crop_size * crop_size * 3
+    expected = num_frames * frame_bytes
+    actual = len(completed.stdout)
+    if completed.returncode != 0 or actual == 0 or actual % frame_bytes:
         raise VideoDecodeError(
             f"decode failed for {record.clip_id} "
-            f"(exit={completed.returncode}, bytes={len(completed.stdout)}/{expected})"
+            f"(exit={completed.returncode}, bytes={actual}/{expected})"
         )
-    return np.frombuffer(completed.stdout, dtype=np.uint8).reshape(
-        num_frames, crop_size, crop_size, 3
-    ).copy()
+    decoded_frames = actual // frame_bytes
+    minimum_safe_frames = math.ceil(num_frames * MIN_DECODED_FRAME_FRACTION)
+    if not minimum_safe_frames <= decoded_frames <= num_frames:
+        raise VideoDecodeError(
+            f"decode produced an unsafe frame count for {record.clip_id} "
+            f"(exit={completed.returncode}, frames={decoded_frames}/{num_frames}, "
+            f"minimum_safe={minimum_safe_frames})"
+        )
+    frames = np.frombuffer(completed.stdout, dtype=np.uint8).reshape(
+        decoded_frames, crop_size, crop_size, 3
+    )
+    padding_frames = num_frames - decoded_frames
+    if padding_frames:
+        frames = np.concatenate(
+            [frames, np.repeat(frames[-1:], padding_frames, axis=0)],
+            axis=0,
+        )
+    return frames.copy(), {
+        "ffmpeg_decoded_frames": decoded_frames,
+        "decoder_padding_frames": padding_frames,
+    }
+
+
+def extract_clip(record: ClipRecord, num_frames: int, crop_size: int, timeout: float) -> np.ndarray:
+    frames, _ = _extract_clip_with_audit(record, num_frames, crop_size, timeout)
+    return frames
 
 
 def valid_cache(record: ClipRecord, cache_root: Path, num_frames: int, crop_size: int) -> bool:
@@ -97,7 +137,9 @@ def cache_one(record: ClipRecord, cache_root: Path, num_frames: int, crop_size: 
     array_path, metadata_path = cache_paths(cache_root, record)
     if valid_cache(record, cache_root, num_frames, crop_size):
         return "reused"
-    frames = extract_clip(record, num_frames, crop_size, timeout)
+    frames, decode_audit = _extract_clip_with_audit(
+        record, num_frames, crop_size, timeout
+    )
     array_path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(dir=array_path.parent, suffix=".npy", delete=False) as temporary:
         temporary_path = Path(temporary.name)
@@ -115,6 +157,8 @@ def cache_one(record: ClipRecord, cache_root: Path, num_frames: int, crop_size: 
         "num_frames": num_frames,
         "crop_size": crop_size,
         "short_clip_sampling_policy": SHORT_CLIP_POLICY,
+        "decode_padding_policy": DECODE_PADDING_POLICY,
+        **decode_audit,
         "pixel_unique_frames": len({
             hashlib.sha256(frame.tobytes()).digest() for frame in frames
         }),

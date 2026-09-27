@@ -68,8 +68,11 @@ def _adafocus_args(
         dataset="fsn",
         temporal_pool=False,
         non_local=False,
-        stn_hidden_dim=32,
-        temporal_hidden_dim=32,
+        # Match the released Sth-Sth V2 p128 8+12 command exactly.  The
+        # checkpoint uses a 128-wide spatial policy and a 64-wide temporal
+        # policy; smaller wrapper defaults silently leave those tensors random.
+        stn_hidden_dim=128,
+        temporal_hidden_dim=64,
         fsn_local_adapter="temporal" if modified else "none",
         fsn_interaction="cross_attention" if modified else "none",
         fsn_interaction_weight=0.2,
