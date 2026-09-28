@@ -65,3 +65,26 @@ deterministically repeats the nearest decoded frames to keep the input shape
 fixed. Cache metadata records `pixel_unique_frames` and
 `pixel_repeat_fraction`; primary results must be accompanied by a sensitivity
 analysis with these very short clips excluded.
+
+## Procedure-aware sequence decoder
+
+`experiments.evaluate_sequence` adds a train-only seven-state transition prior
+to a frozen original AdaFocus checkpoint.  Clips are grouped by `record_id`,
+ordered by their annotated timestamps, and decoded with Viterbi.  Singleton
+records keep the independent visual prediction.  The transition weight is
+fixed at `1.0`, so validation labels are never used to fit or tune the prior.
+
+```bash
+python -m experiments.evaluate_sequence \
+  --manifest-dir processed_server/manifests_trainval \
+  --cache-dir /root/autodl-tmp/full_cache_36f224_trainval \
+  --official-checkpoint /root/autodl-tmp/checkpoints/sthv2_p128_8and12.pth.tar \
+  --visual-checkpoint /path/to/original/seed_42/best.pt \
+  --output-dir /root/autodl-tmp/formal_trainval_results_fsn_v3/seed_42
+```
+
+The output records manifest/checkpoint hashes, the fitted transition matrix,
+independent and sequence-aware metrics, support-aware duration slices, and
+clip-level predictions.  Under the derived train-plus-validation protocol,
+the 823 held-out clips are called **validation** and `test_metrics` remains
+`null`; this run does not create an independent test set.
