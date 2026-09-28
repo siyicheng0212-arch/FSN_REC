@@ -13,6 +13,7 @@ log/
 logs/
 runs/
 remote_logs/
+private_error_audit*/
 .last_run_commit
 *.pth
 *.pth.tar
