@@ -1,0 +1,270 @@
+{
+  "schema_version": "fsn-procedure-aware-three-seed-summary-1.0",
+  "num_seeds": 3,
+  "seeds": [
+    42,
+    123,
+    2026
+  ],
+  "manifest_sha256": {
+    "train": "093d0adf08dc1d382c0d2e1863a2f4724cb24ebd5b3d0af070e0c76ca989f1d3",
+    "val": "ad785ec18b14b63616582a143384fac649e69e27d142dfcf87c6852f9d3c6f02"
+  },
+  "transition_weight": 1.0,
+  "smoothing": 1.0,
+  "per_seed": [
+    {
+      "seed": 42,
+      "baseline_macro_f1": 0.7959278770739493,
+      "sequence_macro_f1": 0.8070876094566287,
+      "delta_macro_f1": 0.011159732382679421,
+      "baseline_accuracy": 0.8432563791008505,
+      "sequence_accuracy": 0.8578371810449574,
+      "delta_accuracy": 0.014580801944106936,
+      "baseline_per_class_f1": [
+        0.7901234567901235,
+        0.9191489361702128,
+        0.8710801393728224,
+        0.8707653701380177,
+        0.5616438356164383,
+        0.8314606741573034,
+        0.7272727272727272
+      ],
+      "sequence_per_class_f1": [
+        0.7792207792207791,
+        0.9446808510638298,
+        0.8888888888888888,
+        0.8787128712871287,
+        0.5899280575539567,
+        0.840909090909091,
+        0.7272727272727272
+      ],
+      "baseline_sweep_to_reperfusion": 30,
+      "sequence_sweep_to_reperfusion": 24,
+      "baseline_reperfusion_to_sweep": 29,
+      "sequence_reperfusion_to_sweep": 31,
+      "duration_slices": {
+        "duration_le_10s": {
+          "support": 651,
+          "baseline_accuracy": 0.8494623655913979,
+          "sequence_accuracy": 0.8617511520737328,
+          "baseline_macro_f1": 0.7924046732857046,
+          "sequence_macro_f1": 0.8017059224380808,
+          "baseline_present_class_macro_f1": 0.7924046732857046,
+          "sequence_present_class_macro_f1": 0.8017059224380808
+        },
+        "duration_gt_10s": {
+          "support": 172,
+          "baseline_accuracy": 0.8197674418604651,
+          "sequence_accuracy": 0.8430232558139535,
+          "baseline_macro_f1": 0.5429174431554264,
+          "sequence_macro_f1": 0.5565361279646994,
+          "baseline_present_class_macro_f1": 0.7600844204175969,
+          "sequence_present_class_macro_f1": 0.7791505791505792
+        }
+      },
+      "changed_predictions": 33
+    },
+    {
+      "seed": 123,
+      "baseline_macro_f1": 0.7574361261350484,
+      "sequence_macro_f1": 0.823691453854144,
+      "delta_macro_f1": 0.06625532771909559,
+      "baseline_accuracy": 0.8031591737545565,
+      "sequence_accuracy": 0.8517618469015796,
+      "delta_accuracy": 0.04860267314702316,
+      "baseline_per_class_f1": [
+        0.723404255319149,
+        0.905982905982906,
+        0.8327137546468403,
+        0.8360864040660737,
+        0.5157232704402515,
+        0.7608695652173914,
+        0.7272727272727272
+      ],
+      "sequence_per_class_f1": [
+        0.8433734939759036,
+        0.9446808510638298,
+        0.8634686346863468,
+        0.8707317073170731,
+        0.5693430656934306,
+        0.840909090909091,
+        0.8333333333333334
+      ],
+      "baseline_sweep_to_reperfusion": 43,
+      "sequence_sweep_to_reperfusion": 24,
+      "baseline_reperfusion_to_sweep": 30,
+      "sequence_reperfusion_to_sweep": 33,
+      "duration_slices": {
+        "duration_le_10s": {
+          "support": 651,
+          "baseline_accuracy": 0.8125960061443932,
+          "sequence_accuracy": 0.858678955453149,
+          "baseline_macro_f1": 0.7582972796399429,
+          "sequence_macro_f1": 0.8037850203020739,
+          "baseline_present_class_macro_f1": 0.7582972796399429,
+          "sequence_present_class_macro_f1": 0.8037850203020739
+        },
+        "duration_gt_10s": {
+          "support": 172,
+          "baseline_accuracy": 0.7674418604651163,
+          "sequence_accuracy": 0.8255813953488372,
+          "baseline_macro_f1": 0.506078127045869,
+          "sequence_macro_f1": 0.5702018911321237,
+          "baseline_present_class_macro_f1": 0.7085093778642165,
+          "sequence_present_class_macro_f1": 0.7982826475849731
+        }
+      },
+      "changed_predictions": 65
+    },
+    {
+      "seed": 2026,
+      "baseline_macro_f1": 0.7744872240134052,
+      "sequence_macro_f1": 0.798708494441632,
+      "delta_macro_f1": 0.02422127042822686,
+      "baseline_accuracy": 0.8213851761846902,
+      "sequence_accuracy": 0.8456865127582017,
+      "delta_accuracy": 0.024301336573511523,
+      "baseline_per_class_f1": [
+        0.7586206896551724,
+        0.9401709401709402,
+        0.8344827586206897,
+        0.8523748395378691,
+        0.546583850931677,
+        0.761904761904762,
+        0.7272727272727272
+      ],
+      "sequence_per_class_f1": [
+        0.8148148148148149,
+        0.9572649572649573,
+        0.8758620689655172,
+        0.8635794743429287,
+        0.5810810810810811,
+        0.7710843373493975,
+        0.7272727272727272
+      ],
+      "baseline_sweep_to_reperfusion": 41,
+      "sequence_sweep_to_reperfusion": 31,
+      "baseline_reperfusion_to_sweep": 27,
+      "sequence_reperfusion_to_sweep": 29,
+      "duration_slices": {
+        "duration_le_10s": {
+          "support": 651,
+          "baseline_accuracy": 0.8233486943164362,
+          "sequence_accuracy": 0.8509984639016898,
+          "baseline_macro_f1": 0.7699743811139497,
+          "sequence_macro_f1": 0.7969048559589542,
+          "baseline_present_class_macro_f1": 0.7699743811139497,
+          "sequence_present_class_macro_f1": 0.7969048559589542
+        },
+        "duration_gt_10s": {
+          "support": 172,
+          "baseline_accuracy": 0.813953488372093,
+          "sequence_accuracy": 0.8255813953488372,
+          "baseline_macro_f1": 0.5464280200269084,
+          "sequence_macro_f1": 0.536804465375894,
+          "baseline_present_class_macro_f1": 0.7649992280376716,
+          "sequence_present_class_macro_f1": 0.7515262515262515
+        }
+      },
+      "changed_predictions": 39
+    }
+  ],
+  "baseline_macro_f1": {
+    "values": [
+      0.7959278770739493,
+      0.7574361261350484,
+      0.7744872240134052
+    ],
+    "mean": 0.7759504090741343,
+    "sample_std": 0.019287545346078905,
+    "t_95_interval": [
+      0.7280336232261088,
+      0.8238671949221598
+    ],
+    "degrees_of_freedom": 2,
+    "caution": "only three seeds; interval is descriptive and unstable"
+  },
+  "sequence_macro_f1": {
+    "values": [
+      0.8070876094566287,
+      0.823691453854144,
+      0.798708494441632
+    ],
+    "mean": 0.8098291859174682,
+    "sample_std": 0.012715118810682692,
+    "t_95_interval": [
+      0.7782405304327232,
+      0.8414178414022132
+    ],
+    "degrees_of_freedom": 2,
+    "caution": "only three seeds; interval is descriptive and unstable"
+  },
+  "delta_macro_f1": {
+    "values": [
+      0.011159732382679421,
+      0.06625532771909559,
+      0.02422127042822686
+    ],
+    "mean": 0.03387877684333396,
+    "sample_std": 0.028789437802550208,
+    "t_95_interval": [
+      -0.03764392348567892,
+      0.10540147717234684
+    ],
+    "degrees_of_freedom": 2,
+    "caution": "only three seeds; interval is descriptive and unstable"
+  },
+  "baseline_accuracy": {
+    "values": [
+      0.8432563791008505,
+      0.8031591737545565,
+      0.8213851761846902
+    ],
+    "mean": 0.8226002430133658,
+    "sample_std": 0.020076198835793795,
+    "t_95_interval": [
+      0.7727241751677143,
+      0.8724763108590172
+    ],
+    "degrees_of_freedom": 2,
+    "caution": "only three seeds; interval is descriptive and unstable"
+  },
+  "sequence_accuracy": {
+    "values": [
+      0.8578371810449574,
+      0.8517618469015796,
+      0.8456865127582017
+    ],
+    "mean": 0.8517618469015796,
+    "sample_std": 0.006075334143377853,
+    "t_95_interval": [
+      0.836668662160857,
+      0.8668550316423023
+    ],
+    "degrees_of_freedom": 2,
+    "caution": "only three seeds; interval is descriptive and unstable"
+  },
+  "delta_accuracy": {
+    "values": [
+      0.014580801944106936,
+      0.04860267314702316,
+      0.024301336573511523
+    ],
+    "mean": 0.02916160388821387,
+    "sample_std": 0.017523943015620883,
+    "t_95_interval": [
+      -0.014373797305967363,
+      0.0726970050823951
+    ],
+    "degrees_of_freedom": 2,
+    "caution": "only three seeds; interval is descriptive and unstable"
+  },
+  "acceptance": {
+    "mean_delta_macro_f1_at_least_0.01": true,
+    "no_seed_macro_f1_regression": true,
+    "mean_accuracy_non_decreasing": true,
+    "passed": true
+  },
+  "test_metrics": null
+}
