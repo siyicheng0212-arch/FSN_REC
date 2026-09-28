@@ -229,8 +229,11 @@ class FullClipDataset:
             "video": video,
             "label": record.label_id,
             "clip_id": record.clip_id,
+            "record_id": record.record_id or record.clip_id,
             "source": record.source_collection,
             "duration": record.clip_duration_sec,
+            "clip_start_sec": record.clip_start_sec,
+            "clip_end_sec": record.clip_end_sec,
         }
 
 
