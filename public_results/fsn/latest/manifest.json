@@ -1,0 +1,17 @@
+{
+  "schema_version": "fsn-public-results-manifest-1.0",
+  "files": [
+    "audit_summary.json",
+    "sequence_per_seed.json",
+    "three_seed_summary.json",
+    "visual_model_comparison.json"
+  ],
+  "excluded": [
+    "videos and decoded frame caches",
+    "raw annotations and manifests containing local paths",
+    "clip-level prediction JSONL",
+    "training logs and model checkpoints"
+  ],
+  "privacy_check": "no known absolute private path markers",
+  "test_metrics_policy": "must remain null"
+}
