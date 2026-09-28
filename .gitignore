@@ -26,3 +26,6 @@ __pycache__/
 venv/
 .idea/
 .vscode/
+
+# Local raster previews; SVG and per-epoch JSON are published on GitHub.
+public_results/fsn/latest/*.png
