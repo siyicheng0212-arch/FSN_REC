@@ -12,6 +12,15 @@ a *soft* prior: sweeping may continue, move to reperfusion, or move directly
 to needle removal.  It does not recognize why a particular patient changes
 action, and it does not enforce a fixed clinical script.
 
+Importantly, a source `record_id` denotes one media file, **not necessarily
+one continuous treatment**.  The user confirms that online videos may be
+edited compilations of action segments.  The current metadata and decoder
+do not contain a continuity/edit-status field or reset the sequence at cuts.
+Consequently, the fitted matrix currently describes the order of *annotated
+segments in those files*, which can reflect editing conventions as well as
+treatment behavior.  It must not be described as a validated clinical
+workflow prior.
+
 Across three seeds, v3 improved mean macro-F1 from 0.7760 to 0.8098 over
 independent visual predictions.  Sweeping-to-reperfusion errors fell from
 114 to 79, while reperfusion-to-sweeping errors rose from 86 to 93.  The
@@ -44,6 +53,10 @@ the unavailable data server.  Aggregate confusion matrices cannot identify
 which original videos to inspect.  `experiments.audit_sequence_errors`
 prepares a private, reproducible review queue, selecting clips where v3
 corrects or creates each sweep/reperfusion error direction across seeds.
+Before interpreting any transition, assign each reviewed media record a
+continuity status: `verified_continuous_treatment`,
+`edited_same_session_chronological`, `montage_or_unknown_order`, or
+`undetermined`.  Do not infer continuity solely from FSN/clinic/web source.
 For each selected original interval, inspect the source video and record:
 
 1. Whether needle/practitioner-hand motion and patient-limb motion are both
@@ -58,6 +71,14 @@ For each selected original interval, inspect the source video and record:
 Do not build a boundary-conditioned model until this review demonstrates a
 repeatable, visually observable error mechanism.  Keep clip identities,
 media paths, predictions, frames, and review notes off GitHub.
+
+For method claims, report continuous verified recordings separately from
+edited/unknown recordings.  A treatment-workflow transition prior should be
+fitted and evaluated only where chronology is verified.  Otherwise present
+v3 as an **empirical annotated-segment order prior**; unknown or montage
+records should have a visual-only fallback unless a within-video continuity
+rule has been independently checked.  This is a new protocol requiring
+re-evaluation, not a claim that current v3 numbers already follow it.
 
 ## Candidate only if the audit supports it
 
@@ -100,8 +121,8 @@ before adding model complexity.
 ## Honest present-tense contribution statement
 
 At present, the defensible contribution is a carefully curated FSN
-fine-grained recognition task/benchmark, a transparent procedure-prior
-baseline, and controlled analysis of when sequence context helps and harms.
+fine-grained recognition task/benchmark, a transparent annotated-segment
+order baseline, and controlled analysis of when sequence context helps and harms.
 The role-conditioned model and superiority over generic temporal methods
 remain **unproven** until the private error review and matched experiments
 are completed.
