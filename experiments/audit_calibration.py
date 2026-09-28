@@ -186,6 +186,42 @@ def run(args: argparse.Namespace) -> dict:
         sequence_metrics = probability_metrics(
             marginal_probability, labels, sequence_prediction
         )
+        def probability_slices(indices: list[int]) -> dict:
+            if not indices:
+                return {"num_samples": 0, "visual": None, "sequence": None}
+            selected = torch.tensor(indices, dtype=torch.long)
+            return {
+                "num_samples": len(indices),
+                "visual": probability_metrics(
+                    visual_probability[selected],
+                    labels[selected],
+                    visual_prediction[selected],
+                ),
+                "sequence": probability_metrics(
+                    marginal_probability[selected],
+                    labels[selected],
+                    sequence_prediction[selected],
+                ),
+            }
+
+        duration_slices = {
+            "duration_le_10s": probability_slices([
+                index for index, record in enumerate(validation)
+                if record.clip_duration_sec <= 10.0
+            ]),
+            "duration_gt_10s": probability_slices([
+                index for index, record in enumerate(validation)
+                if record.clip_duration_sec > 10.0
+            ]),
+        }
+        sources = sorted(set(record.source_collection for record in validation))
+        source_slices = {
+            source: probability_slices([
+                index for index, record in enumerate(validation)
+                if record.source_collection == source
+            ])
+            for source in sources
+        }
         ids, visual_cm = confusion_by_record(record_ids, labels, visual_prediction)
         sequence_ids, sequence_cm = confusion_by_record(
             record_ids, labels, sequence_prediction
@@ -197,6 +233,10 @@ def run(args: argparse.Namespace) -> dict:
         seed_results[str(seed)] = {
             "visual": visual_metrics,
             "sequence": sequence_metrics,
+            "slices": {
+                **duration_slices,
+                "source_collection": source_slices,
+            },
             "delta": {
                 "decision_accuracy": (
                     sequence_metrics["decision_accuracy"]
