@@ -48,6 +48,7 @@ def probability_metrics(
     one_hot = torch.nn.functional.one_hot(targets, num_classes=7).double()
     nll = -torch.log(true_probability.clamp_min(1e-15)).mean()
     brier = ((probabilities - one_hot) ** 2).sum(dim=1).mean()
+    per_class_brier = ((probabilities - one_hot) ** 2).mean(dim=0)
     entropy = -(probabilities * probabilities.clamp_min(1e-15).log()).sum(dim=1)
 
     bin_index = torch.clamp((selected_confidence * bins).long(), max=bins - 1)
@@ -85,6 +86,7 @@ def probability_metrics(
         "mean_predictive_entropy": float(entropy.mean()),
         "nll": float(nll),
         "multiclass_brier": float(brier),
+        "per_class_brier": per_class_brier.tolist(),
         "top_label_ece": ece,
         "reliability_bins": reliability,
         "high_confidence_threshold": 0.9,
