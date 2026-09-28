@@ -119,6 +119,10 @@ class CalibrationAuditTest(unittest.TestCase):
             self.assertTrue(output.exists())
             self.assertEqual(audit["record_cluster_bootstrap"]["num_records"], 2)
             self.assertEqual(audit["seeds"], [42, 123])
+            self.assertEqual(
+                audit["per_seed"]["42"]["slices"]["source_collection"]["unit"]["visual"]["num_samples"],
+                3,
+            )
             self.assertIsNone(audit["test_metrics"])
 
 
