@@ -73,6 +73,10 @@ class ClipRecord:
     clip_start_sec: float
     clip_end_sec: float
     clip_duration_sec: float
+    # Stable source-record identity used only for within-video sequence
+    # decoding.  Older pilot manifests may not contain it and safely fall back
+    # to a singleton sequence keyed by clip_id.
+    record_id: str = ""
 
     def to_manifest_dict(self) -> dict[str, Any]:
         return {
@@ -87,6 +91,7 @@ class ClipRecord:
             "clip_start_sec": self.clip_start_sec,
             "clip_end_sec": self.clip_end_sec,
             "clip_duration_sec": self.clip_duration_sec,
+            "record_id": self.record_id or self.clip_id,
         }
 
 
@@ -127,6 +132,9 @@ def _parse_record(
     if not isinstance(group_id, str) or not group_id.strip():
         # Clip-specific fallback is only for pilot diversity; it is not subject ID evidence.
         group_id = clip_id
+    record_id = row.get("record_id")
+    if not isinstance(record_id, str) or not record_id.strip():
+        record_id = clip_id
 
     start = _finite_number(row.get("clip_start_sec"), "clip_start_sec", clip_id)
     end = _finite_number(row.get("clip_end_sec"), "clip_end_sec", clip_id)
@@ -157,6 +165,7 @@ def _parse_record(
         clip_start_sec=start,
         clip_end_sec=end,
         clip_duration_sec=duration,
+        record_id=record_id,
     )
 
 

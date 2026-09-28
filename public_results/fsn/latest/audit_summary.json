@@ -1,0 +1,387 @@
+{
+  "phase_coverage": {
+    "schema_version": "fsn-phase-coverage-audit-1.0",
+    "checkpoint_epoch": 46,
+    "checkpoint_validation_macro_f1": 0.7959278770739493,
+    "phase_bins": [
+      [
+        0,
+        11
+      ],
+      [
+        12,
+        23
+      ],
+      [
+        24,
+        35
+      ]
+    ],
+    "decision_thresholds": {
+      "long_any_phase_lt2_rate": 0.15,
+      "confusion_minus_correct_rate": 0.1
+    },
+    "summary": {
+      "all": {
+        "n": 823,
+        "phase_count_mean": [
+          3.6087484811664643,
+          4.279465370595383,
+          4.111786148238153
+        ],
+        "any_phase_zero_rate": 0.0,
+        "any_phase_lt2_rate": 0.0,
+        "coverage_l1_mean": 1.0425273390036451,
+        "span_mean": 31.441069258809236,
+        "unique_mean": 12.0,
+        "entropy_mean": 0.9896533993295736
+      },
+      "short_le_10s": {
+        "n": 651,
+        "phase_count_mean": [
+          3.5944700460829493,
+          4.293394777265745,
+          4.1121351766513055
+        ],
+        "any_phase_zero_rate": 0.0,
+        "any_phase_lt2_rate": 0.0,
+        "coverage_l1_mean": 1.0568356374807988,
+        "span_mean": 31.410138248847925,
+        "unique_mean": 12.0,
+        "entropy_mean": 0.9894456612532773
+      },
+      "long_gt_10s": {
+        "n": 172,
+        "phase_count_mean": [
+          3.6627906976744184,
+          4.226744186046512,
+          4.1104651162790695
+        ],
+        "any_phase_zero_rate": 0.0,
+        "any_phase_lt2_rate": 0.0,
+        "coverage_l1_mean": 0.9883720930232558,
+        "span_mean": 31.558139534883722,
+        "unique_mean": 12.0,
+        "entropy_mean": 0.9904396637927654
+      },
+      "correct": {
+        "n": 694,
+        "phase_count_mean": [
+          3.610951008645533,
+          4.273775216138328,
+          4.115273775216139
+        ],
+        "any_phase_zero_rate": 0.0,
+        "any_phase_lt2_rate": 0.0,
+        "coverage_l1_mean": 1.0115273775216138,
+        "span_mean": 31.472622478386167,
+        "unique_mean": 12.0,
+        "entropy_mean": 0.9899654354932329
+      },
+      "incorrect": {
+        "n": 129,
+        "phase_count_mean": [
+          3.5968992248062017,
+          4.310077519379845,
+          4.093023255813954
+        ],
+        "any_phase_zero_rate": 0.0,
+        "any_phase_lt2_rate": 0.0,
+        "coverage_l1_mean": 1.2093023255813953,
+        "span_mean": 31.271317829457363,
+        "unique_mean": 12.0,
+        "entropy_mean": 0.987974693146787
+      },
+      "confusion_3_4": {
+        "n": 59,
+        "phase_count_mean": [
+          3.6610169491525424,
+          4.254237288135593,
+          4.084745762711864
+        ],
+        "any_phase_zero_rate": 0.0,
+        "any_phase_lt2_rate": 0.0,
+        "coverage_l1_mean": 1.152542372881356,
+        "span_mean": 31.338983050847457,
+        "unique_mean": 12.0,
+        "entropy_mean": 0.9889552249746808
+      },
+      "long_correct": {
+        "n": 141,
+        "phase_count_mean": [
+          3.673758865248227,
+          4.24822695035461,
+          4.078014184397163
+        ],
+        "any_phase_zero_rate": 0.0,
+        "any_phase_lt2_rate": 0.0,
+        "coverage_l1_mean": 0.9361702127659575,
+        "span_mean": 31.595744680851062,
+        "unique_mean": 12.0,
+        "entropy_mean": 0.9909203893749426
+      },
+      "long_incorrect": {
+        "n": 31,
+        "phase_count_mean": [
+          3.6129032258064515,
+          4.129032258064516,
+          4.258064516129032
+        ],
+        "any_phase_zero_rate": 0.0,
+        "any_phase_lt2_rate": 0.0,
+        "coverage_l1_mean": 1.2258064516129032,
+        "span_mean": 31.387096774193548,
+        "unique_mean": 12.0,
+        "entropy_mean": 0.9882531377577013
+      },
+      "long_confusion_3_4": {
+        "n": 24,
+        "phase_count_mean": [
+          3.6666666666666665,
+          4.083333333333333,
+          4.25
+        ],
+        "any_phase_zero_rate": 0.0,
+        "any_phase_lt2_rate": 0.0,
+        "coverage_l1_mean": 1.1666666666666667,
+        "span_mean": 31.458333333333332,
+        "unique_mean": 12.0,
+        "entropy_mean": 0.9888198723395666
+      },
+      "by_class": {
+        "0": {
+          "n": 40,
+          "phase_count_mean": [
+            3.4,
+            4.5,
+            4.1
+          ],
+          "any_phase_zero_rate": 0.0,
+          "any_phase_lt2_rate": 0.0,
+          "coverage_l1_mean": 1.3,
+          "span_mean": 30.95,
+          "unique_mean": 12.0,
+          "entropy_mean": 0.986897774040699
+        },
+        "1": {
+          "n": 119,
+          "phase_count_mean": [
+            3.403361344537815,
+            4.243697478991597,
+            4.352941176470588
+          ],
+          "any_phase_zero_rate": 0.0,
+          "any_phase_lt2_rate": 0.0,
+          "coverage_l1_mean": 1.3109243697478992,
+          "span_mean": 31.428571428571427,
+          "unique_mean": 12.0,
+          "entropy_mean": 0.9863544817732162
+        },
+        "2": {
+          "n": 151,
+          "phase_count_mean": [
+            3.5033112582781456,
+            4.3907284768211925,
+            4.105960264900662
+          ],
+          "any_phase_zero_rate": 0.0,
+          "any_phase_lt2_rate": 0.0,
+          "coverage_l1_mean": 1.2582781456953642,
+          "span_mean": 31.251655629139073,
+          "unique_mean": 12.0,
+          "entropy_mean": 0.9873982766606161
+        },
+        "3": {
+          "n": 387,
+          "phase_count_mean": [
+            3.7209302325581395,
+            4.2299741602067185,
+            4.0490956072351425
+          ],
+          "any_phase_zero_rate": 0.0,
+          "any_phase_lt2_rate": 0.0,
+          "coverage_l1_mean": 0.8682170542635659,
+          "span_mean": 31.607235142118864,
+          "unique_mean": 12.0,
+          "entropy_mean": 0.9915343706305945
+        },
+        "4": {
+          "n": 72,
+          "phase_count_mean": [
+            3.6944444444444446,
+            4.180555555555555,
+            4.125
+          ],
+          "any_phase_zero_rate": 0.0,
+          "any_phase_lt2_rate": 0.0,
+          "coverage_l1_mean": 0.9722222222222222,
+          "span_mean": 31.38888888888889,
+          "unique_mean": 12.0,
+          "entropy_mean": 0.9906832269496388
+        },
+        "5": {
+          "n": 48,
+          "phase_count_mean": [
+            3.6041666666666665,
+            4.375,
+            4.020833333333333
+          ],
+          "any_phase_zero_rate": 0.0,
+          "any_phase_lt2_rate": 0.0,
+          "coverage_l1_mean": 0.9583333333333334,
+          "span_mean": 31.270833333333332,
+          "unique_mean": 12.0,
+          "entropy_mean": 0.9908163237075011
+        },
+        "6": {
+          "n": 6,
+          "phase_count_mean": [
+            3.5,
+            4.333333333333333,
+            4.166666666666667
+          ],
+          "any_phase_zero_rate": 0.0,
+          "any_phase_lt2_rate": 0.0,
+          "coverage_l1_mean": 1.3333333333333333,
+          "span_mean": 31.0,
+          "unique_mean": 12.0,
+          "entropy_mean": 0.9872227112452189
+        }
+      }
+    },
+    "decision": {
+      "go": false,
+      "long_any_phase_lt2_rate": 0.0,
+      "confusion_any_phase_lt2_rate": 0.0,
+      "correct_any_phase_lt2_rate": 0.0,
+      "confusion_minus_correct_rate": 0.0,
+      "reason": "original sampler already covers phases; do not train phase-stratified v3"
+    }
+  },
+  "spatial_patch": {
+    "schema_version": "fsn-spatial-patch-audit-1.0",
+    "checkpoint_epoch": 46,
+    "summary": {
+      "n": 92,
+      "class_counts": {
+        "0": 1,
+        "1": 13,
+        "2": 20,
+        "3": 20,
+        "4": 20,
+        "5": 0,
+        "6": 18
+      },
+      "mean_patch_area_fraction": 0.9851949398985138,
+      "patch_area_fraction_quantiles": [
+        0.9190549266581632,
+        0.97119140625,
+        0.9778018873565051,
+        0.9888691804846939,
+        0.9933135363520408,
+        0.9977678571428571,
+        1.0
+      ],
+      "mean_motion_inside_fraction": 0.9926201619008905,
+      "samples_any_centroid_outside_rate": 0.0,
+      "samples_motion_inside_lt_0_5_rate": 0.0,
+      "incorrect_any_centroid_outside_rate": 0.0,
+      "correct_any_centroid_outside_rate": 0.0
+    }
+  },
+  "checkpoint_reproduction": {
+    "schema_version": "fsn-checkpoint-reproduction-audit-1.0",
+    "tolerance": 0.002,
+    "all_within_tolerance": true,
+    "seeds": [
+      {
+        "seed": 42,
+        "checkpoint_reported_validation_macro_f1": 0.7959278770739493,
+        "independent_reevaluation_macro_f1": 0.7959278770739493,
+        "absolute_difference": 0.0,
+        "test_metrics": null
+      },
+      {
+        "seed": 123,
+        "checkpoint_reported_validation_macro_f1": 0.7582531425707376,
+        "independent_reevaluation_macro_f1": 0.7574361261350484,
+        "absolute_difference": 0.0008170164356892107,
+        "test_metrics": null
+      },
+      {
+        "seed": 2026,
+        "checkpoint_reported_validation_macro_f1": 0.7744872240134052,
+        "independent_reevaluation_macro_f1": 0.7744872240134052,
+        "absolute_difference": 0.0,
+        "test_metrics": null
+      }
+    ]
+  },
+  "completion": {
+    "schema_version": "fsn-v3-completion-audit-1.0",
+    "method": "procedure-aware train-only transition prior + Viterbi on frozen original AdaFocus logits",
+    "branch": "codex/fsn-v3",
+    "commit": "f820740faf3aecb5bc0cbfff94f3c6ac47d4ec64",
+    "pull_request": "https://github.com/siyicheng0212-arch/FSN_REC/pull/3",
+    "evidence": {
+      "paper_and_failure_analysis": true,
+      "phase_coverage_hypothesis_rejected": "phase_coverage_audit.json",
+      "spatial_trajectory_hypothesis_rejected": "spatial_patch_audit.json",
+      "sequence_hypothesis_supported": "sequence_decoder_audit.json",
+      "server_tests_passed": 12,
+      "integration_smoke": {
+        "train_clips": 28,
+        "validation_clips": 14,
+        "test_metrics": null
+      },
+      "formal_seeds": [
+        42,
+        123,
+        2026
+      ],
+      "acceptance": {
+        "mean_delta_macro_f1_at_least_0.01": true,
+        "no_seed_macro_f1_regression": true,
+        "mean_accuracy_non_decreasing": true,
+        "passed": true
+      },
+      "checkpoint_reproduction": {
+        "schema_version": "fsn-checkpoint-reproduction-audit-1.0",
+        "tolerance": 0.002,
+        "all_within_tolerance": true,
+        "seeds": [
+          {
+            "seed": 42,
+            "checkpoint_reported_validation_macro_f1": 0.7959278770739493,
+            "independent_reevaluation_macro_f1": 0.7959278770739493,
+            "absolute_difference": 0.0,
+            "test_metrics": null
+          },
+          {
+            "seed": 123,
+            "checkpoint_reported_validation_macro_f1": 0.7582531425707376,
+            "independent_reevaluation_macro_f1": 0.7574361261350484,
+            "absolute_difference": 0.0008170164356892107,
+            "test_metrics": null
+          },
+          {
+            "seed": 2026,
+            "checkpoint_reported_validation_macro_f1": 0.7744872240134052,
+            "independent_reevaluation_macro_f1": 0.7744872240134052,
+            "absolute_difference": 0.0,
+            "test_metrics": null
+          }
+        ]
+      }
+    },
+    "protocol": {
+      "train_manifest_sha256": "093d0adf08dc1d382c0d2e1863a2f4724cb24ebd5b3d0af070e0c76ca989f1d3",
+      "validation_manifest_sha256": "ad785ec18b14b63616582a143384fac649e69e27d142dfcf87c6852f9d3c6f02",
+      "transition_weight": 1.0,
+      "smoothing": 1.0,
+      "independent_test_used": false,
+      "test_metrics": null
+    },
+    "conclusion": "accepted as the formal FSN-v3 candidate under the frozen validation-only protocol; three-seed uncertainty remains descriptive"
+  }
+}

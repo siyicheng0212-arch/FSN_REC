@@ -11,7 +11,9 @@ Conventions
 * The confusion matrix uses target classes as rows and predictions as columns.
 * Undefined precision/recall/F1 values are reported as ``0.0``.
 * Macro F1 always averages all seven classes, including classes with no
-  support in a slice.  Weighted F1 weights classes by target support.
+  support in a slice.  ``present_class_macro_f1`` averages only classes with
+  non-zero target support so sparse slices are not misread.  Weighted F1
+  weights classes by target support.
 """
 
 from __future__ import annotations
@@ -191,6 +193,10 @@ def _metric_block(
         weighted_f1 = float((f1 * support.to(torch.float64)).sum().item() / sample_count)
     else:
         weighted_f1 = 0.0
+    supported = support > 0
+    present_class_macro_f1 = (
+        float(f1[supported].mean().item()) if supported.any().item() else 0.0
+    )
 
     per_class = [
         {
@@ -208,6 +214,7 @@ def _metric_block(
         "num_samples": sample_count,
         "accuracy": accuracy,
         "macro_f1": float(f1.mean().item()),
+        "present_class_macro_f1": present_class_macro_f1,
         "micro_f1": float(micro_f1.item()),
         "weighted_f1": weighted_f1,
         "per_class": per_class,
