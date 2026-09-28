@@ -15,6 +15,20 @@ analysis and paper/reviewer preparation.
 - `audit_summary.json` — rejected phase-coverage and patch-trajectory
   hypotheses, checkpoint reproduction, and completion evidence.
 - `manifest.json` — public bundle schema and exclusion policy.
+- `learning_curves.json` — every epoch's native training loss, validation
+  macro-F1, learning rate, phase, and best epoch for six visual training runs.
+- `original_three_seeds.svg` — three Original training curves.
+- `seed42_model_comparison.svg` — Original, FSN-v1, active-mean, and FSN-v2
+  training curves under seed 42.
+
+The training loss is Uni-AdaFocus's weighted multi-branch objective, rather
+than final-head cross-entropy.  FSN-v3 uses the frozen Original visual model
+and fits a transition table from training labels, so it shares Original's
+neural-network training curve and has no separate epoch-wise train loss.
+
+![Original three-seed learning curves](original_three_seeds.svg)
+
+![Seed 42 visual-model comparison](seed42_model_comparison.svg)
 
 Detailed human-readable reports are available at:
 
