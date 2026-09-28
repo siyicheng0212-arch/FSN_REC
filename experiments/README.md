@@ -135,3 +135,9 @@ arms with identical seeds and optimizer settings.  The existing model selects
 only 12 focus frames from the 36 candidates, so the dense arm does not
 guarantee that every high-rate window is ultimately observed.  Inspect the
 selected frame times before attributing a gain or loss to needle motion.
+After both caches pass validation, `scripts/run_motion_sampling_arm.sh`
+launches seeds 42, 123, and 2026 sequentially for one sampling arm.  Run
+the two arms in separate screen sessions with GPU indices 0 and 1.  The
+script checks the frozen manifest/checkpoint hashes and complete cache
+before training, and skips a seed only when a matching complete result is
+already present.
