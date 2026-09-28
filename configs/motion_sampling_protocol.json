@@ -1,0 +1,40 @@
+{
+  "schema_version": "fsn-motion-sampling-pilot-1.0",
+  "question": "Does equal-budget high-rate sampling inside each annotated clip improve sweeping and reperfusion recognition?",
+  "model_variant": "original",
+  "sampling_arms": {
+    "uniform": "36 bin-centre frames across the complete clip",
+    "three_windows": "for clips longer than 3 seconds, three 1-second windows centered at 1/6, 1/2 and 5/6 of the clip, with 12 bin-centre frames per window; shorter clips use uniform sampling"
+  },
+  "total_frames_per_clip": 36,
+  "crop_size": 224,
+  "seeds": [42, 123, 2026],
+  "train_manifest_sha256": "093d0adf08dc1d382c0d2e1863a2f4724cb24ebd5b3d0af070e0c76ca989f1d3",
+  "validation_manifest_sha256": "ad785ec18b14b63616582a143384fac649e69e27d142dfcf87c6852f9d3c6f02",
+  "official_checkpoint_sha256": "2dea5c15ce23b3549aeab977774649f0ce8dcbc5637d5d1d1319efc019896fc3",
+  "training": {
+    "head_warmup_epochs": 5,
+    "head_warmup_lr": 0.001,
+    "finetune_max_epochs": 100,
+    "early_stopping_patience": 10,
+    "batch_size": 4,
+    "accumulation_steps": 16,
+    "lr": 0.002,
+    "weight_decay": 0.0005,
+    "global_lr_ratio": 0.5,
+    "stn_lr_ratio": 0.2,
+    "temporal_lr_ratio": 0.2,
+    "class_weight_mode": "sqrt_inverse",
+    "clip_grad": 20
+  },
+  "primary_metric": "seven-class macro-F1",
+  "diagnostics": [
+    "sweeping-to-reperfusion and reperfusion-to-sweeping errors separately",
+    "per-class precision recall and F1",
+    "source and duration slices",
+    "loss and validation curves",
+    "selected-focus-frame time coverage",
+    "throughput and peak GPU memory"
+  ],
+  "evaluation_scope": "Same frozen train and validation manifests for both sampling arms; no independent test is read in this pilot"
+}
