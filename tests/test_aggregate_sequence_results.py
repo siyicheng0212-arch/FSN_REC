@@ -9,8 +9,20 @@ from experiments.aggregate_sequence_results import aggregate
 def metric(value):
     return {
         "macro_f1": value,
+        "present_class_macro_f1": value,
         "accuracy": value + 0.02,
         "per_class": [{"f1": value} for _ in range(7)],
+        "confusion_matrix": [[0 for _ in range(7)] for _ in range(7)],
+    }
+
+
+def metrics(value):
+    return {
+        "all": metric(value),
+        "slices": {
+            "duration_le_10s": {"num_samples": 8, **metric(value)},
+            "duration_gt_10s": {"num_samples": 2, **metric(value)},
+        },
     }
 
 
@@ -22,8 +34,8 @@ class AggregateSequenceResultsTest(unittest.TestCase):
             "manifest_sha256": hashes or {"train": "a", "val": "b"},
             "transition_weight": 1.0,
             "transition_prior": {"smoothing": 1.0},
-            "baseline_metrics": {"all": metric(baseline)},
-            "sequence_metrics": {"all": metric(sequence)},
+            "baseline_metrics": metrics(baseline),
+            "sequence_metrics": metrics(sequence),
             "changed_predictions": 3,
             "test_metrics": test,
         }), encoding="utf-8")
