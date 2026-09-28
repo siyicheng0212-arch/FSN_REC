@@ -103,3 +103,39 @@ The aggregator fails closed if manifests or transition settings differ, or if
 any result contains independent-test metrics.  With three seeds it reports a
 Student-t interval as descriptive evidence and explicitly warns that the
 interval is unstable at this sample size.
+
+## Probability calibration and record-level uncertainty
+
+`experiments.audit_calibration` evaluates the same frozen FSN-v3 predictions
+without fitting any calibration parameter on validation.  Original visual
+probabilities come from softmax logits.  The sequence probabilities are
+computed with the forward-backward algorithm using the transition prior fitted
+from training labels.  Final sequence decisions remain Viterbi labels, so
+top-label calibration uses the marginal probability assigned to the selected
+Viterbi label.  NLL and multiclass Brier score evaluate the complete marginal
+distribution.
+
+The audit reports ten-bin expected calibration error, reliability bins,
+confidence, entropy, high-confidence mistakes, and selective error rates.
+It also resamples **source records**, preserving the dependence among clips
+from the same video.  Its percentile interval describes held-out-record
+variation conditional on the three fitted seeds.  It does not include new
+training-seed variation, external-site variation, or the effect of choosing
+checkpoints on this validation set.  See
+[Guo et al. (ICML 2017)](https://proceedings.mlr.press/v70/guo17a.html) for
+the calibration motivation and
+[Rabiner (1989)](https://www.cs.cmu.edu/~guestrin/Class/10701-S06/Handouts/Readings/hmms-rabiner.pdf)
+for forward-backward inference.
+
+```bash
+python -m experiments.audit_calibration \
+  --train-manifest /path/to/manifests_trainval/train.jsonl \
+  --validation-manifest /path/to/manifests_trainval/val.jsonl \
+  --prediction 42=/path/to/sequence_seed42/validation_predictions.jsonl \
+  --prediction 123=/path/to/sequence_seed123/validation_predictions.jsonl \
+  --prediction 2026=/path/to/sequence_seed2026/validation_predictions.jsonl \
+  --sequence-result 42=/path/to/sequence_seed42/result.json \
+  --sequence-result 123=/path/to/sequence_seed123/result.json \
+  --sequence-result 2026=/path/to/sequence_seed2026/result.json \
+  --output /path/to/probability_and_cluster_audit.json
+```
