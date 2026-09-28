@@ -60,6 +60,25 @@ def aggregate(paths: list[Path]) -> dict[str, Any]:
             raise ValueError("seed results use different transition settings")
         baseline = data["baseline_metrics"]["all"]
         sequence = data["sequence_metrics"]["all"]
+        baseline_cm = baseline["confusion_matrix"]
+        sequence_cm = sequence["confusion_matrix"]
+        duration = {}
+        for slice_name in ("duration_le_10s", "duration_gt_10s"):
+            base_slice = data["baseline_metrics"]["slices"][slice_name]
+            sequence_slice = data["sequence_metrics"]["slices"][slice_name]
+            duration[slice_name] = {
+                "support": base_slice["num_samples"],
+                "baseline_accuracy": base_slice["accuracy"],
+                "sequence_accuracy": sequence_slice["accuracy"],
+                "baseline_macro_f1": base_slice["macro_f1"],
+                "sequence_macro_f1": sequence_slice["macro_f1"],
+                "baseline_present_class_macro_f1": base_slice[
+                    "present_class_macro_f1"
+                ],
+                "sequence_present_class_macro_f1": sequence_slice[
+                    "present_class_macro_f1"
+                ],
+            }
         rows.append({
             "path": str(path),
             "seed": int(data["seed"]),
@@ -71,6 +90,11 @@ def aggregate(paths: list[Path]) -> dict[str, Any]:
             "delta_accuracy": sequence["accuracy"] - baseline["accuracy"],
             "baseline_per_class_f1": [item["f1"] for item in baseline["per_class"]],
             "sequence_per_class_f1": [item["f1"] for item in sequence["per_class"]],
+            "baseline_sweep_to_reperfusion": baseline_cm[3][4],
+            "sequence_sweep_to_reperfusion": sequence_cm[3][4],
+            "baseline_reperfusion_to_sweep": baseline_cm[4][3],
+            "sequence_reperfusion_to_sweep": sequence_cm[4][3],
+            "duration_slices": duration,
             "changed_predictions": data["changed_predictions"],
         })
     rows.sort(key=lambda row: row["seed"])
