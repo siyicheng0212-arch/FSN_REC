@@ -103,3 +103,35 @@ The aggregator fails closed if manifests or transition settings differ, or if
 any result contains independent-test metrics.  With three seeds it reports a
 Student-t interval as descriptive evidence and explicitly warns that the
 interval is unstable at this sample size.
+
+## Equal-budget within-clip motion sampling pilot
+
+`configs/motion_sampling_protocol.json` freezes a paired experiment with the
+original Uni-AdaFocus model.  `--sampling uniform` preserves the existing
+36-frame cache request digest.  `--sampling three_windows` uses the same
+36-frame budget but takes twelve frames from each of three one-second windows
+for clips longer than three seconds.  Shorter clips follow the original
+uniform path exactly.  Both samplers read the same annotated clip interval;
+neither uses labels or validation metrics to choose windows.
+
+The dense arm must be cached from the source videos in its own directory:
+
+```bash
+python -m experiments.full_data cache \
+  --manifest /path/to/manifests_trainval/train.jsonl \
+  --cache-dir /path/to/full_cache_three_windows_36f224 \
+  --sampling three_windows --num-frames 36 --crop-size 224
+
+python -m experiments.train_adafocus \
+  --variant original --sampling three_windows \
+  --manifest-dir /path/to/manifests_trainval \
+  --cache-dir /path/to/full_cache_three_windows_36f224 \
+  --checkpoint /path/to/official_ssv2_checkpoint \
+  --output-dir /path/to/new_dense_results
+```
+
+Use separate cache and output directories for the uniform arm.  Train both
+arms with identical seeds and optimizer settings.  The existing model selects
+only 12 focus frames from the 36 candidates, so the dense arm does not
+guarantee that every high-rate window is ultimately observed.  Inspect the
+selected frame times before attributing a gain or loss to needle motion.
