@@ -88,3 +88,18 @@ independent and sequence-aware metrics, support-aware duration slices, and
 clip-level predictions.  Under the derived train-plus-validation protocol,
 the 823 held-out clips are called **validation** and `test_metrics` remains
 `null`; this run does not create an independent test set.
+
+After all formal seeds finish, aggregate matched baseline/sequence results:
+
+```bash
+python -m experiments.aggregate_sequence_results \
+  /path/to/sequence_seed42/result.json \
+  /path/to/sequence_seed123/result.json \
+  /path/to/sequence_seed2026/result.json \
+  --output /path/to/three_seed_summary.json
+```
+
+The aggregator fails closed if manifests or transition settings differ, or if
+any result contains independent-test metrics.  With three seeds it reports a
+Student-t interval as descriptive evidence and explicitly warns that the
+interval is unstable at this sample size.
