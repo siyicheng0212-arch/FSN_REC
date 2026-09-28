@@ -31,6 +31,10 @@ class ClassificationMetricsTest(unittest.TestCase):
         self.assertAlmostEqual(overall["accuracy"], 6 / 9)
         self.assertAlmostEqual(overall["micro_f1"], 6 / 9)
         self.assertAlmostEqual(overall["macro_f1"], (0.5 + 0.8 + 1 + 0 + 2 / 3 + 0 + 1) / 7)
+        self.assertAlmostEqual(
+            overall["present_class_macro_f1"],
+            overall["macro_f1"],
+        )
         self.assertAlmostEqual(overall["weighted_f1"], (2 * 0.5 + 2 * 0.8 + 1 + 2 / 3 + 1) / 9)
 
         expected_confusion = [
@@ -65,6 +69,11 @@ class ClassificationMetricsTest(unittest.TestCase):
         self.assertAlmostEqual(slices["duration_le_10s"]["accuracy"], 2 / 5)
         self.assertEqual(slices["duration_gt_10s"]["num_samples"], 4)
         self.assertAlmostEqual(slices["duration_gt_10s"]["accuracy"], 1.0)
+        # Only classes 1, 2, 4, and 6 are present in this slice; unsupported
+        # classes must not depress the support-aware diagnostic.
+        self.assertAlmostEqual(
+            slices["duration_gt_10s"]["present_class_macro_f1"], 1.0
+        )
 
     def test_collated_metadata_missing_values_and_json_safety(self):
         collated_metadata = {
