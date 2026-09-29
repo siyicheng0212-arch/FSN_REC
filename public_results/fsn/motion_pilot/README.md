@@ -1,0 +1,63 @@
+# FSN equal-budget motion sampling pilot
+
+Both arms use original Uni-AdaFocus with 36 candidate frames, matched pretrained weights,
+training settings, frozen source-record splits, and seeds 42, 123, and 2026.
+This compares sampling only; it does not add a role-aware motion module.
+
+| Seed | Uniform macro-F1 | Three-window macro-F1 | Dense − uniform |
+|---:|---:|---:|---:|
+| 42 | 0.7638 | 0.7582 | -0.0056 |
+| 123 | 0.7853 | 0.7530 | -0.0322 |
+| 2026 | 0.7899 | 0.7774 | -0.0125 |
+
+Mean macro-F1: uniform **0.7796**, three-window **0.7629**, paired difference **-0.0168**.
+Mean accuracy: uniform 0.8218, three-window 0.8165.
+Mean weighted-F1: uniform 0.8191, three-window 0.8124.
+With only three seeds, the interval in summary.json is descriptive.
+
+| Arm | Sweep → reperfusion errors (3-seed mean) | Reperfusion → sweep errors (3-seed mean) |
+|---|---:|---:|
+| uniform | 25.0 | 35.0 |
+| three_windows | 22.0 | 35.0 |
+
+Three-window sampling had lower seven-class macro-F1 in all three paired seeds.
+This is a negative result for replacing the uniform sampler with this fixed design.
+
+| Class (validation support) | Uniform F1 | Three-window F1 | Difference |
+|---|---:|---:|---:|
+| 消毒 (40) | 0.7264 | 0.7647 | +0.0383 |
+| 进针 (119) | 0.8987 | 0.8899 | -0.0089 |
+| 运针 (151) | 0.8470 | 0.8245 | -0.0225 |
+| 扫散 (387) | 0.8532 | 0.8529 | -0.0003 |
+| 再灌注 (72) | 0.5188 | 0.4969 | -0.0219 |
+| 拔针 (48) | 0.7851 | 0.7799 | -0.0053 |
+| 固定 (6) | 0.8283 | 0.7314 | -0.0969 |
+
+Sensitivity excluding the six-sample fixation class: mean F1 over the other six classes is 0.7715 for uniform and 0.7681 for three-window.  Sweeping F1 is essentially unchanged, while reperfusion F1 falls under three-window sampling.
+
+| Duration | Support | Uniform present-class macro-F1 | Three-window present-class macro-F1 |
+|---|---:|---:|---:|
+| ≤10 s | 651 | 0.7744 | 0.7678 |
+| >10 s | 172 | 0.7028 | 0.7076 |
+
+| Source | Clips | Uniform accuracy | Three-window accuracy |
+|---|---:|---:|---:|
+| FSN | 166 | 0.7590 | 0.7831 |
+| bilibili | 37 | 0.6937 | 0.6847 |
+| dy | 263 | 0.8530 | 0.8669 |
+| ks | 34 | 0.8725 | 0.8824 |
+| lishui | 209 | 0.8469 | 0.7799 |
+| menzhen | 89 | 0.8127 | 0.8240 |
+| youtube | 25 | 0.8533 | 0.8933 |
+
+Lishui accuracy decreases for three-window sampling in all three seeds; the aggregate source effect is not uniform. The fixed windows may miss useful parts of a long clip, but frame-selection and visibility audits are needed to establish the cause.
+
+Report class-wise F1, both error directions, and source/duration slices from
+[the aggregate JSON](three_seed_comparison.json) alongside the
+[training and validation curves](learning_curves.svg). Source slices may omit classes;
+their fixed-seven-class macro-F1 must not be compared as if all classes were present.
+Fixation has only six evaluation clips, so its F1 is especially unstable.
+
+The source corpus includes edited online videos. This experiment makes no claim
+about continuous clinical workflow, direct blood reperfusion measurement,
+or detection of clinician and patient roles.
