@@ -58,3 +58,14 @@ Proceed to a three-seed formal comparison only if the inner-split pilot is
 stable and improves the clinically important error directions without merely
 raising one class at the expense of the other. Otherwise retain this as a
 negative result and do not turn it into a paper claim.
+
+The frozen 10%-by-source-group inner split uses source training-manifest
+SHA-256 `093d0adf08dc1d382c0d2e1863a2f4724cb24ebd5b3d0af070e0c76ca989f1d3`,
+seed `20260929`, and yields 6,586 inner-training clips from 1,279 groups and
+786 inner-validation clips from 142 disjoint groups. Every class is represented
+in both parts, including 116/10 fixation clips. The inner manifest hashes
+are `f0fc0ace561cd59c471c86d6ec674144de0d5ede6acf447a5a021787538ebf0a`
+and `d6449196c3798a233a593db19da9045c92e02ba62bb6fa5a55d41bf118ee6580`.
+The original `split: train` field is intentionally retained because both
+subsets reuse the immutable training-frame cache; the output filenames and
+`inner_split_role` field define their new logical roles.
