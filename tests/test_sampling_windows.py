@@ -1,7 +1,9 @@
 import hashlib
 import json
 import unittest
+from pathlib import Path
 
+from experiments.audit_focus_selection import frozen_hashes
 from experiments.full_data import (
     CACHE_VERSION,
     request_digest,
@@ -28,6 +30,18 @@ def record(duration: float) -> ClipRecord:
 
 
 class SamplingWindowsTest(unittest.TestCase):
+    def test_focus_audit_uses_frozen_protocol_hashes(self):
+        protocol = Path(__file__).resolve().parents[1] / "configs/motion_sampling_protocol.json"
+        hashes = frozen_hashes(protocol)
+        self.assertEqual(
+            hashes["train"],
+            "093d0adf08dc1d382c0d2e1863a2f4724cb24ebd5b3d0af070e0c76ca989f1d3",
+        )
+        self.assertEqual(
+            hashes["val"],
+            "ad785ec18b14b63616582a143384fac649e69e27d142dfcf87c6852f9d3c6f02",
+        )
+
     def test_uniform_cache_digest_remains_compatible(self):
         item = record(12.0)
         original_payload = {
