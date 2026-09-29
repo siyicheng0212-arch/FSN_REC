@@ -91,6 +91,45 @@ def uniformized_prior(
     )
 
 
+def order_agnostic_priors(records: list[ClipRecord]) -> dict[str, TransitionPrior]:
+    """Fit controls for frequency, persistence, and unordered neighboring labels."""
+    prior = fit_transition_prior(records, smoothing=1.0)
+    observed = torch.zeros((7, 7), dtype=torch.float64)
+    for indices in _ordered_groups(records):
+        for left, right in zip(indices, indices[1:]):
+            observed[records[left].label_id, records[right].label_id] += 1
+    total = observed.sum()
+    if total <= 0:
+        raise ValueError("order controls require at least one adjacent clip pair")
+
+    destination = observed.sum(dim=0) + 1.0
+    destination /= destination.sum()
+    iid = destination.unsqueeze(0).repeat(7, 1)
+
+    self_probability = float((observed.diagonal().sum() + 1.0) / (total + 2.0))
+    persistence = torch.full(
+        (7, 7), (1.0 - self_probability) / 6, dtype=torch.float64
+    )
+    persistence.fill_diagonal_(self_probability)
+
+    unordered_counts = observed + observed.T + 1.0
+    unordered = unordered_counts / unordered_counts.sum(dim=1, keepdim=True)
+    return {
+        name: TransitionPrior(
+            initial_probability=prior.initial_probability,
+            transition_probability=matrix,
+            smoothing=prior.smoothing,
+            training_sequences=prior.training_sequences,
+            training_clips=prior.training_clips,
+        )
+        for name, matrix in {
+            "iid_next_class": iid,
+            "global_persistence": persistence,
+            "unordered_neighbor_pair": unordered,
+        }.items()
+    }
+
+
 def record_mean_logit_pooling(
     logits: torch.Tensor, records: list[ClipRecord]
 ) -> torch.Tensor:
@@ -110,7 +149,7 @@ def ablation_predictions(
     shuffled_prior = fit_transition_prior(
         shuffled_training_records(training), smoothing=1.0
     )
-    return {
+    methods = {
         "visual_only": logits.argmax(dim=1),
         "uniform_prior": decode_sequences(
             logits, validation,
@@ -136,6 +175,13 @@ def ablation_predictions(
         ),
         "record_mean_logit_pooling": record_mean_logit_pooling(logits, validation),
     }
+    methods.update(
+        {
+            name: decode_sequences(logits, validation, control, weight=1.0)
+            for name, control in order_agnostic_priors(training).items()
+        }
+    )
+    return methods
 
 
 def _metrics(
