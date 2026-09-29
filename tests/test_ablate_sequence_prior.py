@@ -8,6 +8,7 @@ import torch
 
 from experiments.ablate_sequence_prior import (
     ablation_predictions,
+    order_agnostic_priors,
     run as run_ablation,
     sha256,
     shuffled_training_records,
@@ -64,7 +65,18 @@ class SequencePriorAblationTest(unittest.TestCase):
             "visual_only", "uniform_prior", "start_prior_only",
             "transition_prior_only", "full_bigram", "shuffled_train_order",
             "shuffled_inference_order", "record_mean_logit_pooling",
+            "iid_next_class", "global_persistence", "unordered_neighbor_pair",
         })
+        controls = order_agnostic_priors(training)
+        for control in controls.values():
+            self.assertTrue(torch.allclose(
+                control.transition_probability.sum(dim=1),
+                torch.ones(7, dtype=torch.float64),
+            ))
+        self.assertTrue(torch.allclose(
+            controls["iid_next_class"].transition_probability[0],
+            controls["iid_next_class"].transition_probability[6],
+        ))
 
     def test_full_ablation_and_comparison_reproduce_frozen_v3(self):
         with tempfile.TemporaryDirectory() as temporary:
