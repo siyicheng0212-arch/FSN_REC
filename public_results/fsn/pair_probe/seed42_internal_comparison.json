@@ -1,0 +1,66 @@
+{
+  "schema_version": "fsn-pair-probe-safe-summary-1.0",
+  "status": "completed_negative_pilot",
+  "seed": 42,
+  "code_branch": "codex/fsn-pair-probe",
+  "train_manifest_sha256": "f0fc0ace561cd59c471c86d6ec674144de0d5ede6acf447a5a021787538ebf0a",
+  "inner_validation_manifest_sha256": "d6449196c3798a233a593db19da9045c92e02ba62bb6fa5a55d41bf118ee6580",
+  "training_group_overlap": 0,
+  "pair_counts": {
+    "train": 3770,
+    "inner_validation": 466,
+    "inner_validation_sweeping": 357,
+    "inner_validation_reperfusion": 109
+  },
+  "independent_test_metrics": null,
+  "823_clip_development_validation_used_for_selection": false,
+  "equal_capacity_probe_parameters": 20276,
+  "arms": {
+    "rgb_motion": {
+      "exit_code": 0,
+      "best_epoch": 12,
+      "inner_validation_macro_f1": 0.6030791497755319,
+      "inner_validation_accuracy": 0.7145922780036926,
+      "sweeping_f1": 0.8134642356241233,
+      "reperfusion_f1": 0.3926940639269406,
+      "confusion_sweeping_to_reperfusion": 67,
+      "confusion_reperfusion_to_sweeping": 66,
+      "train_loss_by_epoch": [0.6425, 0.637, 0.6352, 0.6251, 0.6124, 0.5968, 0.586, 0.5783, 0.5669, 0.5598, 0.5554, 0.5509],
+      "inner_validation_macro_f1_by_epoch": [0.4338, 0.4338, 0.4338, 0.4338, 0.4388, 0.5792, 0.4905, 0.5426, 0.5915, 0.5972, 0.5911, 0.6031]
+    },
+    "rgb_only": {
+      "exit_code": 0,
+      "best_epoch": 1,
+      "inner_validation_macro_f1": 0.43377885783718106,
+      "inner_validation_accuracy": 0.766094446182251,
+      "sweeping_f1": 0.8675577156743621,
+      "reperfusion_f1": 0.0,
+      "confusion_sweeping_to_reperfusion": 0,
+      "confusion_reperfusion_to_sweeping": 109,
+      "train_loss_by_epoch": [0.6428, 0.6392, 0.6415, 0.6377, 0.6383],
+      "inner_validation_macro_f1_by_epoch": [0.4338, 0.4338, 0.4338, 0.4338, 0.4338]
+    },
+    "rgb_motion_shuffled": {
+      "exit_code": 0,
+      "best_epoch": 1,
+      "inner_validation_macro_f1": 0.43377885783718106,
+      "inner_validation_accuracy": 0.766094446182251,
+      "sweeping_f1": 0.8675577156743621,
+      "reperfusion_f1": 0.0,
+      "confusion_sweeping_to_reperfusion": 0,
+      "confusion_reperfusion_to_sweeping": 109,
+      "train_loss_by_epoch": [0.6423, 0.6381, 0.6411, 0.6351, 0.6328],
+      "inner_validation_macro_f1_by_epoch": [0.4338, 0.4338, 0.4338, 0.4338, 0.4338]
+    }
+  },
+  "pretrained_original_conditional_pair_reference": {
+    "different_architecture_and_pretraining": true,
+    "inner_validation_macro_f1": 0.7521875755378293,
+    "inner_validation_accuracy": 0.8347639441490173,
+    "sweeping_f1": 0.8952380952380952,
+    "reperfusion_f1": 0.6091370558375634,
+    "confusion_sweeping_to_reperfusion": 28,
+    "confusion_reperfusion_to_sweeping": 49
+  },
+  "interpretation": "Motion differences helped this small randomly initialized pair probe avoid the all-sweeping collapse seen with the same-capacity RGB-only and shuffled controls, but it remained substantially below the pretrained Original; one seed and text/visibility confounds preclude a method claim."
+}
