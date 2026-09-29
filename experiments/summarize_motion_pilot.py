@@ -236,7 +236,7 @@ def plot_curves(curves: dict, output: Path) -> None:
     axes[-1, 1].set_xlabel("Epoch (warm-up then fine-tune)")
     fig.suptitle("FSN paired 36-frame sampling: training and validation curves")
     fig.tight_layout()
-    fig.savefig(output, format="svg", bbox_inches="tight")
+    fig.savefig(output, format=output.suffix.lstrip("."), bbox_inches="tight")
     plt.close(fig)
 
 
@@ -265,6 +265,8 @@ def write_report(summary: dict, output: Path) -> None:
         f"paired difference **{agg['dense_minus_uniform']['macro_f1']['mean']:+.4f}**.",
         f"Mean accuracy: uniform {agg['uniform']['accuracy']['mean']:.4f}, "
         f"three-window {agg['three_windows']['accuracy']['mean']:.4f}.",
+        f"Mean weighted-F1: uniform {agg['uniform']['weighted_f1']['mean']:.4f}, "
+        f"three-window {agg['three_windows']['weighted_f1']['mean']:.4f}.",
         "With only three seeds, the interval in summary.json is descriptive.",
         "",
         "| Arm | Sweep → reperfusion errors (3-seed mean) | Reperfusion → sweep errors (3-seed mean) |",
@@ -275,6 +277,17 @@ def write_report(summary: dict, output: Path) -> None:
             f"| {arm} | {agg[arm]['sweep_to_reperfusion']['mean']:.1f} | "
             f"{agg[arm]['reperfusion_to_sweep']['mean']:.1f} |"
         )
+    deltas = [
+        per_seed[str(seed)]["three_windows"]["macro_f1"]
+        - per_seed[str(seed)]["uniform"]["macro_f1"]
+        for seed in SEEDS
+    ]
+    if all(delta < 0 for delta in deltas):
+        lines.extend([
+            "",
+            "Three-window sampling had lower seven-class macro-F1 in all three paired seeds.",
+            "This is a negative result for replacing the uniform sampler with this fixed design.",
+        ])
     lines.extend([
         "",
         "| Class (validation support) | Uniform F1 | Three-window F1 | Difference |",
@@ -287,6 +300,19 @@ def write_report(summary: dict, output: Path) -> None:
             f"| {base['class_name']} ({base['support']}) | {base['f1']['mean']:.4f} | "
             f"{dense['f1']['mean']:.4f} | {dense['f1']['mean']-base['f1']['mean']:+.4f} |"
         )
+    uniform_first_six = statistics.mean(
+        item["f1"]["mean"] for item in agg["uniform"]["per_class"][:6]
+    )
+    dense_first_six = statistics.mean(
+        item["f1"]["mean"] for item in agg["three_windows"]["per_class"][:6]
+    )
+    lines.extend([
+        "",
+        f"Sensitivity excluding the six-sample fixation class: mean F1 over the other "
+        f"six classes is {uniform_first_six:.4f} for uniform and {dense_first_six:.4f} "
+        "for three-window.  Sweeping F1 is essentially unchanged, while "
+        "reperfusion F1 falls under three-window sampling.",
+    ])
     lines.extend([
         "",
         "| Duration | Support | Uniform present-class macro-F1 | Three-window present-class macro-F1 |",
@@ -296,15 +322,38 @@ def write_report(summary: dict, output: Path) -> None:
                         ("duration_lt_0.1s", "<0.1 s")):
         base = agg["uniform"]["duration_slices"][name]
         dense = agg["three_windows"]["duration_slices"][name]
+        if base["support"] == 0:
+            continue
         lines.append(
             f"| {label} | {base['support']} | {base['present_class_macro_f1']['mean']:.4f} | "
             f"{dense['present_class_macro_f1']['mean']:.4f} |"
         )
     lines.extend([
         "",
+        "| Source | Clips | Uniform accuracy | Three-window accuracy |",
+        "|---|---:|---:|---:|",
+    ])
+    for source, base in agg["uniform"]["source_accuracy"].items():
+        dense = agg["three_windows"]["source_accuracy"][source]
+        lines.append(
+            f"| {source} | {base['support']} | {base['accuracy']['mean']:.4f} | "
+            f"{dense['accuracy']['mean']:.4f} |"
+        )
+    if "lishui" in agg["uniform"]["source_accuracy"]:
+        lines.extend([
+            "",
+            "Lishui accuracy decreases for three-window sampling in all three seeds; "
+            "the aggregate source effect is not uniform. The fixed windows may miss "
+            "useful parts of a long clip, but frame-selection and visibility audits "
+            "are needed to establish the cause.",
+        ])
+    lines.extend([
+        "",
         "Report class-wise F1, both error directions, and source/duration slices from",
-        "summary.json alongside the learning curves. Source slices may omit classes;",
+        "[the aggregate JSON](three_seed_comparison.json) alongside the",
+        "[training and validation curves](learning_curves.svg). Source slices may omit classes;",
         "their fixed-seven-class macro-F1 must not be compared as if all classes were present.",
+        "Fixation has only six evaluation clips, so its F1 is especially unstable.",
         "",
         "The source corpus includes edited online videos. This experiment makes no claim",
         "about continuous clinical workflow, direct blood reperfusion measurement,",
