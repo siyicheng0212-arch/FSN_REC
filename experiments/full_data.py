@@ -10,6 +10,7 @@ import os
 import subprocess
 import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,10 @@ from experiments.pilot_data import ClipRecord, VideoDecodeError, _get_ffmpeg_exe
 
 
 CACHE_VERSION = "fsn-full-uniform-ffmpeg-v2-short-clip-audit"
+THREE_WINDOWS_CACHE_VERSION = "fsn-full-three-windows-1s-v1"
+SAMPLING_MODES = ("uniform", "three_windows")
+THREE_WINDOWS_DURATION_THRESHOLD_SEC = 3.0
+THREE_WINDOWS_WINDOW_SEC = 1.0
 SHORT_CLIP_POLICY = "fixed-length uniform temporal positions with deterministic ffmpeg frame repetition"
 MIN_DECODED_FRAME_FRACTION = 0.80
 DECODE_PADDING_POLICY = (
@@ -32,7 +37,45 @@ def cache_paths(cache_root: Path, record: ClipRecord) -> tuple[Path, Path]:
     return directory / f"{record.clip_id}.npy", directory / f"{record.clip_id}.json"
 
 
-def request_digest(record: ClipRecord, num_frames: int, crop_size: int) -> str:
+def sampling_windows(
+    record: ClipRecord, num_frames: int, sampling: str = "uniform"
+) -> list[tuple[float, float, int]]:
+    if sampling not in SAMPLING_MODES:
+        raise ValueError(f"unknown sampling mode: {sampling}")
+    if num_frames <= 0 or record.clip_duration_sec <= 0:
+        raise ValueError("sampling requires positive frame count and duration")
+    if sampling == "uniform" or record.clip_duration_sec <= THREE_WINDOWS_DURATION_THRESHOLD_SEC:
+        return [(record.clip_start_sec, record.clip_end_sec, num_frames)]
+    if num_frames % 3:
+        raise ValueError("three_windows requires a frame count divisible by three")
+    duration = record.clip_duration_sec
+    start = record.clip_start_sec
+    frames_per_window = num_frames // 3
+    centers = (duration / 6.0, duration / 2.0, duration * 5.0 / 6.0)
+    return [
+        (
+            start + center - THREE_WINDOWS_WINDOW_SEC / 2.0,
+            start + center + THREE_WINDOWS_WINDOW_SEC / 2.0,
+            frames_per_window,
+        )
+        for center in centers
+    ]
+
+
+def requested_timestamps(
+    record: ClipRecord, num_frames: int, sampling: str = "uniform"
+) -> list[float]:
+    return [
+        window_start + (index + 0.5) * (window_end - window_start) / frames
+        for window_start, window_end, frames in sampling_windows(record, num_frames, sampling)
+        for index in range(frames)
+    ]
+
+
+def request_digest(
+    record: ClipRecord, num_frames: int, crop_size: int, sampling: str = "uniform"
+) -> str:
+    sampling_windows(record, num_frames, sampling)
     payload = {
         "version": CACHE_VERSION,
         "clip_id": record.clip_id,
@@ -42,6 +85,16 @@ def request_digest(record: ClipRecord, num_frames: int, crop_size: int) -> str:
         "num_frames": num_frames,
         "crop_size": crop_size,
     }
+    if sampling == "three_windows":
+        source = Path(record.video_path).stat()
+        payload.update({
+            "version": THREE_WINDOWS_CACHE_VERSION,
+            "sampling": sampling,
+            "window_sec": THREE_WINDOWS_WINDOW_SEC,
+            "duration_threshold_sec": THREE_WINDOWS_DURATION_THRESHOLD_SEC,
+            "video_size_bytes": source.st_size,
+            "video_mtime_ns": source.st_mtime_ns,
+        })
     encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True).encode()
     return hashlib.sha256(encoded).hexdigest()
 
@@ -119,13 +172,46 @@ def extract_clip(record: ClipRecord, num_frames: int, crop_size: int, timeout: f
     return frames
 
 
-def valid_cache(record: ClipRecord, cache_root: Path, num_frames: int, crop_size: int) -> bool:
+def extract_sampled_clip(
+    record: ClipRecord,
+    num_frames: int,
+    crop_size: int,
+    timeout: float,
+    sampling: str = "uniform",
+) -> tuple[np.ndarray, dict[str, int]]:
+    windows = sampling_windows(record, num_frames, sampling)
+    if len(windows) == 1:
+        return _extract_clip_with_audit(record, num_frames, crop_size, timeout)
+    arrays = []
+    audits = []
+    for start, end, frames in windows:
+        window_record = replace(
+            record,
+            clip_start_sec=start,
+            clip_end_sec=end,
+            clip_duration_sec=end - start,
+        )
+        array, audit = _extract_clip_with_audit(
+            window_record, frames, crop_size, timeout
+        )
+        arrays.append(array)
+        audits.append(audit)
+    return np.concatenate(arrays, axis=0), {
+        key: sum(audit[key] for audit in audits)
+        for key in ("ffmpeg_decoded_frames", "decoder_padding_frames")
+    }
+
+
+def valid_cache(
+    record: ClipRecord, cache_root: Path, num_frames: int, crop_size: int,
+    sampling: str = "uniform",
+) -> bool:
     array_path, metadata_path = cache_paths(cache_root, record)
     if not array_path.is_file() or not metadata_path.is_file():
         return False
     try:
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-        if metadata.get("request_digest") != request_digest(record, num_frames, crop_size):
+        if metadata.get("request_digest") != request_digest(record, num_frames, crop_size, sampling):
             return False
         frames = np.load(array_path, mmap_mode="r", allow_pickle=False)
         return frames.dtype == np.uint8 and frames.shape == (num_frames, crop_size, crop_size, 3)
@@ -133,12 +219,15 @@ def valid_cache(record: ClipRecord, cache_root: Path, num_frames: int, crop_size
         return False
 
 
-def cache_one(record: ClipRecord, cache_root: Path, num_frames: int, crop_size: int, timeout: float) -> str:
+def cache_one(
+    record: ClipRecord, cache_root: Path, num_frames: int, crop_size: int,
+    timeout: float, sampling: str = "uniform",
+) -> str:
     array_path, metadata_path = cache_paths(cache_root, record)
-    if valid_cache(record, cache_root, num_frames, crop_size):
+    if valid_cache(record, cache_root, num_frames, crop_size, sampling):
         return "reused"
-    frames, decode_audit = _extract_clip_with_audit(
-        record, num_frames, crop_size, timeout
+    frames, decode_audit = extract_sampled_clip(
+        record, num_frames, crop_size, timeout, sampling
     )
     array_path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(dir=array_path.parent, suffix=".npy", delete=False) as temporary:
@@ -146,8 +235,10 @@ def cache_one(record: ClipRecord, cache_root: Path, num_frames: int, crop_size: 
         np.save(temporary, frames, allow_pickle=False)
     os.replace(temporary_path, array_path)
     metadata = {
-        "cache_version": CACHE_VERSION,
-        "request_digest": request_digest(record, num_frames, crop_size),
+        "cache_version": (
+            CACHE_VERSION if sampling == "uniform" else THREE_WINDOWS_CACHE_VERSION
+        ),
+        "request_digest": request_digest(record, num_frames, crop_size, sampling),
         "clip_id": record.clip_id,
         "split": record.split,
         "label_id": record.label_id,
@@ -163,9 +254,16 @@ def cache_one(record: ClipRecord, cache_root: Path, num_frames: int, crop_size: 
             hashlib.sha256(frame.tobytes()).digest() for frame in frames
         }),
     }
+    if sampling == "three_windows":
+        metadata.update({
+            "sampling": sampling,
+            "window_sec": THREE_WINDOWS_WINDOW_SEC,
+            "duration_threshold_sec": THREE_WINDOWS_DURATION_THRESHOLD_SEC,
+            "requested_timestamps_sec": requested_timestamps(record, num_frames, sampling),
+        })
     metadata["pixel_repeat_fraction"] = 1.0 - metadata["pixel_unique_frames"] / num_frames
     metadata_path.write_text(json.dumps(metadata, ensure_ascii=False) + "\n", encoding="utf-8")
-    if not valid_cache(record, cache_root, num_frames, crop_size):
+    if not valid_cache(record, cache_root, num_frames, crop_size, sampling):
         raise RuntimeError(f"cache validation failed for {record.clip_id}")
     return "cached"
 
@@ -177,13 +275,14 @@ def cache_manifest(
     crop_size: int,
     workers: int,
     timeout: float,
+    sampling: str = "uniform",
 ) -> dict[str, Any]:
     records = load_pilot_manifest(manifest)
     counts = {"cached": 0, "reused": 0, "failed": 0}
     failures: list[str] = []
     with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = {
-            executor.submit(cache_one, record, cache_root, num_frames, crop_size, timeout): record
+            executor.submit(cache_one, record, cache_root, num_frames, crop_size, timeout, sampling): record
             for record in records
         }
         for completed, future in enumerate(as_completed(futures), 1):
@@ -195,14 +294,17 @@ def cache_manifest(
                 failures.append(record.clip_id)
             if completed % 100 == 0 or completed == len(records):
                 print(json.dumps({"completed": completed, "total": len(records), **counts}), flush=True)
-    result = {"manifest": manifest.name, "total": len(records), **counts, "failed_clip_ids": failures}
+    result = {"manifest": manifest.name, "sampling": sampling, "total": len(records), **counts, "failed_clip_ids": failures}
     if failures:
         raise RuntimeError(json.dumps(result))
     return result
 
 
 class FullClipDataset:
-    def __init__(self, manifest: Path, cache_root: Path, num_frames: int = 36, crop_size: int = 224):
+    def __init__(
+        self, manifest: Path, cache_root: Path, num_frames: int = 36,
+        crop_size: int = 224, sampling: str = "uniform",
+    ):
         import torch
 
         self.torch = torch
@@ -210,9 +312,10 @@ class FullClipDataset:
         self.cache_root = cache_root
         self.num_frames = num_frames
         self.crop_size = crop_size
+        self.sampling = sampling
         missing = [
             record.clip_id for record in self.records
-            if not valid_cache(record, cache_root, num_frames, crop_size)
+            if not valid_cache(record, cache_root, num_frames, crop_size, sampling)
         ]
         if missing:
             raise RuntimeError(f"{len(missing)} invalid/missing caches; run full_data cache first")
@@ -247,11 +350,12 @@ def main() -> None:
     cache.add_argument("--crop-size", type=int, default=224)
     cache.add_argument("--workers", type=int, default=8)
     cache.add_argument("--timeout", type=float, default=120)
+    cache.add_argument("--sampling", choices=SAMPLING_MODES, default="uniform")
     args = parser.parse_args()
     if args.command == "cache":
         print(json.dumps(cache_manifest(
             args.manifest, args.cache_dir, args.num_frames,
-            args.crop_size, args.workers, args.timeout,
+            args.crop_size, args.workers, args.timeout, args.sampling,
         ), ensure_ascii=False, indent=2))
 
 

@@ -273,6 +273,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             args.cache_dir,
             num_frames=36,
             crop_size=224,
+            sampling=args.sampling,
         )
         for split in split_names
     }
@@ -409,6 +410,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         test_seconds = None
     result = {
         "variant": args.variant,
+        "sampling": args.sampling,
         "seed": args.seed,
         "trainable_parameters": trainable_parameter_count(model),
         "split_audit": split_audit,
@@ -435,6 +437,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--variant", choices=("original", "fsn"), required=True)
     parser.add_argument("--manifest-dir", type=Path, default=Path("processed_server/manifests"))
     parser.add_argument("--cache-dir", type=Path, default=Path("full_cache_36f224"))
+    parser.add_argument("--sampling", choices=("uniform", "three_windows"), default="uniform")
     parser.add_argument("--output-dir", type=Path, default=Path("formal_results"))
     parser.add_argument("--checkpoint", type=Path)
     parser.add_argument("--allow-random-init", action="store_true")
