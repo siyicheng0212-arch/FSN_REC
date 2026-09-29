@@ -153,6 +153,7 @@ def run(args: argparse.Namespace) -> dict:
                 "source": record.source_collection,
                 "target": record.label_id,
                 "prediction": prediction,
+                "visual_logits": [float(value) for value in logits[index]],
                 "duration_sec": duration,
                 "selected_indices": selected,
                 "requested_selected_timestamps_sec": times,
