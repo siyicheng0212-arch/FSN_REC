@@ -8,6 +8,7 @@ data server. The summary contains only aggregate statistics.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import statistics
 from pathlib import Path
@@ -18,13 +19,26 @@ from torch.utils.data import DataLoader
 from experiments.full_data import FullClipDataset, requested_timestamps
 from experiments.metrics import compute_classification_metrics
 from experiments.sequence_decoder import predictions_to_logits
-from experiments.train_adafocus import make_model, sha256_file
 
 
-EXPECTED_HASHES = {
-    "train": "093d0adf08dc1d382c0d2e1863a2f4724cb24ebd9a89083ae6bdd8b7ca989f1d3",
-    "val": "ad785ec18b14b63616582a143384fac649e69e27d142dfcf87c6852f9d3c6f02",
-}
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def frozen_hashes(protocol_path: Path) -> dict[str, str]:
+    protocol = json.loads(protocol_path.read_text(encoding="utf-8"))
+    hashes = {
+        "train": protocol["train_manifest_sha256"],
+        "val": protocol["validation_manifest_sha256"],
+    }
+    if any(len(value) != 64 or any(char not in "0123456789abcdef" for char in value)
+           for value in hashes.values()):
+        raise ValueError("invalid frozen manifest hash in protocol")
+    return hashes
 
 
 def _stats(rows: list[dict]) -> dict:
@@ -42,7 +56,9 @@ def _stats(rows: list[dict]) -> dict:
     }
 
 
-def summarize(rows: list[dict], sampling: str, seed: int) -> dict:
+def summarize(
+    rows: list[dict], sampling: str, seed: int, expected_hashes: dict[str, str]
+) -> dict:
     slices = {
         "all": rows,
         "duration_le_3s": [row for row in rows if row["duration_sec"] <= 3.0],
@@ -61,7 +77,7 @@ def summarize(rows: list[dict], sampling: str, seed: int) -> dict:
         "seed": seed,
         "num_frames": 36,
         "num_focus_frames": 12,
-        "manifest_sha256": EXPECTED_HASHES,
+        "manifest_sha256": expected_hashes,
         "slices": {name: _stats(subset) for name, subset in slices.items()},
         "private_rows_not_for_publication": True,
         "test_metrics": None,
@@ -76,13 +92,14 @@ def run(args: argparse.Namespace) -> dict:
         raise ValueError("invalid sampling mode")
     if {"public_results", "reports", ".git"} & set(args.output_dir.parts):
         raise ValueError("private focus rows must stay outside public result directories")
-    for split, expected in EXPECTED_HASHES.items():
+    expected_hashes = frozen_hashes(args.protocol)
+    for split, expected in expected_hashes.items():
         current = sha256_file(args.manifest_dir / f"{split}.jsonl")
         if current != expected:
             raise ValueError(f"{split} manifest hash mismatch")
     checkpoint = torch.load(args.visual_checkpoint, map_location="cpu", weights_only=False)
     stored = checkpoint.get("split_audit", {}).get("manifest_sha256")
-    if stored != EXPECTED_HASHES:
+    if stored != expected_hashes:
         raise ValueError("visual checkpoint manifest hash mismatch")
     if checkpoint.get("args", {}).get("sampling") != args.sampling:
         raise ValueError("visual checkpoint sampling mode mismatch")
@@ -97,6 +114,8 @@ def run(args: argparse.Namespace) -> dict:
         num_workers=args.workers, pin_memory=True,
     )
     device = torch.device("cuda:0")
+    from experiments.train_adafocus import make_model
+
     model_args = argparse.Namespace(
         variant="original", checkpoint=args.official_checkpoint,
         allow_random_init=False, seed=args.seed,
@@ -146,7 +165,7 @@ def run(args: argparse.Namespace) -> dict:
             })
     if len(rows) != 823:
         raise RuntimeError(f"expected 823 validation clips, found {len(rows)}")
-    summary = summarize(rows, args.sampling, args.seed)
+    summary = summarize(rows, args.sampling, args.seed, expected_hashes)
     metrics = compute_classification_metrics(
         predictions_to_logits(row["prediction"] for row in rows),
         torch.tensor([row["target"] for row in rows]),
@@ -177,6 +196,10 @@ def run(args: argparse.Namespace) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest-dir", type=Path, required=True)
+    parser.add_argument(
+        "--protocol", type=Path,
+        default=Path("configs/motion_sampling_protocol.json"),
+    )
     parser.add_argument("--cache-dir", type=Path, required=True)
     parser.add_argument("--official-checkpoint", type=Path, required=True)
     parser.add_argument("--visual-checkpoint", type=Path, required=True)
