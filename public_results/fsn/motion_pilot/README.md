@@ -61,3 +61,37 @@ Fixation has only six evaluation clips, so its F1 is especially unstable.
 The source corpus includes edited online videos. This experiment makes no claim
 about continuous clinical workflow, direct blood reperfusion measurement,
 or detection of clinician and patient roles.
+
+## Fixed within-clip dual-rate fusion diagnostic
+
+Using each arm's independently trained best checkpoint for the same seed, we
+also averaged their seven-class softmax probabilities at equal weight. This
+uses **only the current clip** and does not fit fusion weights. It is a
+diagnostic ensemble of two complete models, not a trained new architecture;
+its inference cost is correspondingly higher.
+
+| Seed | Uniform visual F1 | Dense visual F1 | Fixed fusion visual F1 |
+|---:|---:|---:|---:|
+| 42 | 0.76378 | 0.75817 | 0.76796 |
+| 123 | 0.78528 | 0.75304 | 0.79490 |
+| 2026 | 0.78988 | 0.77739 | 0.79384 |
+| Mean | **0.77965** | 0.76287 | **0.78557** |
+
+The fixed fusion beats uniform alone by 0.00417, 0.00962, and 0.00396
+macro-F1 for the three paired seeds (mean +0.00592). Across three repetitions
+of the 823 validation clips, the dense model uniquely classifies 142 samples
+correctly when uniform is wrong, while uniform uniquely classifies 155 when
+dense is wrong. The fixed fusion corrects 70 uniform errors and harms 33
+uniform correct predictions. Thus there is genuine *complementarity*, but
+simple averaging captures only a small part of it.
+
+The clinically important error trade-off remains: sweeping incorrectly
+predicted as reperfusion falls from 75 to 59 across the three seeds, while
+reperfusion incorrectly predicted as sweeping rises from 105 to 112.
+Reperfusion F1 changes only from about 0.5188 to 0.5200. This diagnostic
+does **not** establish improved bidirectional distinction or clinician/patient
+activity recognition. It motivates a clip-level evidence study, not a claim
+that generic two-rate fusion is novel or sufficient. The full
+[aggregate-only diagnostic](fixed_dual_rate_fusion.json) records per-seed
+class, source, and duration metrics. No private clip predictions or videos
+are published.
