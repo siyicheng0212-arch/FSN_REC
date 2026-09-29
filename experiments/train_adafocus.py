@@ -134,7 +134,16 @@ def make_model(args: argparse.Namespace, device: torch.device) -> tuple[AdaFocus
     else:
         raise RuntimeError("--checkpoint is required for formal training")
     if args.variant == "iea":
+        # Preserve the baseline's post-initialization RNG state so a paired
+        # Original/IEA run with the same seed sees the same policy sampling
+        # and augmentation stream. Initializing the extra module must not
+        # silently change the comparison's randomness.
+        cpu_rng = torch.get_rng_state()
+        cuda_rng = torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
         evidence = FSNClipEvidence(baseline)
+        torch.set_rng_state(cpu_rng)
+        if cuda_rng is not None:
+            torch.cuda.set_rng_state_all(cuda_rng)
         return evidence.to(device), {
             "official_checkpoint": checkpoint_report,
             "evidence_module_parameters": sum(
