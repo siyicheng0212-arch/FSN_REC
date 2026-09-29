@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Evaluate fixed dual-rate fusion and v3 decoding on matched private logits.
+"""Evaluate fixed dual-rate fusion against an equal-cost ensemble control.
 
 This is a diagnostic with no fitted fusion weights. The input rows contain
 clip identities and must stay private; only aggregate metrics are written.
@@ -26,6 +26,7 @@ from experiments.sequence_decoder import (
 
 SEEDS = (42, 123, 2026)
 ARMS = ("uniform", "three_windows")
+METHODS = (*ARMS, "equal_probability_fusion", "two_uniform_models")
 
 
 def _read_rows(path: Path, records: list) -> torch.Tensor:
@@ -74,6 +75,28 @@ def _metrics(logits_or_labels: torch.Tensor, targets: torch.Tensor, records: lis
     return _compact(compute_classification_metrics(logits, targets, metadata))
 
 
+def _duration_slices(scores: torch.Tensor, targets: torch.Tensor, records: list) -> dict:
+    intervals = {
+        "duration_le_3s": lambda duration: duration <= 3.0,
+        "duration_gt_3s": lambda duration: duration > 3.0,
+        "duration_gt_10s": lambda duration: duration > 10.0,
+    }
+    output = {}
+    for name, keep in intervals.items():
+        indices = [
+            index for index, row in enumerate(records)
+            if keep(row.clip_duration_sec)
+        ]
+        selected = torch.tensor(indices, dtype=torch.long)
+        metrics = _metrics(
+            scores.index_select(0, selected),
+            targets.index_select(0, selected),
+            [records[index] for index in indices],
+        )
+        output[name] = {"support": len(indices), **metrics}
+    return output
+
+
 def run(args: argparse.Namespace) -> dict:
     expected = frozen_hashes(args.protocol)
     for split, sha in expected.items():
@@ -87,28 +110,45 @@ def run(args: argparse.Namespace) -> dict:
         raise ValueError("expected 823 validation clips")
     targets = torch.tensor([row.label_id for row in validation], dtype=torch.long)
     prior = fit_transition_prior(train, smoothing=1.0)
-    per_seed = {}
-    for seed in SEEDS:
-        logits = {
+    logits_by_seed = {
+        seed: {
             arm: _read_rows(
                 args.focus_dir / f"{arm}_seed{seed}" / "private_focus_rows.jsonl",
                 validation,
             )
             for arm in ARMS
         }
+        for seed in SEEDS
+    }
+    per_seed = {}
+    for index, seed in enumerate(SEEDS):
+        logits = logits_by_seed[seed]
         probabilities = [torch.softmax(logits[arm], dim=1) for arm in ARMS]
         fixed_fusion = (probabilities[0] + probabilities[1]) * 0.5
-        fused_logits = fixed_fusion.clamp_min(1e-12).log()
-        candidates = {**logits, "equal_probability_fusion": fused_logits}
+        next_uniform = logits_by_seed[SEEDS[(index + 1) % len(SEEDS)]]["uniform"]
+        uniform_ensemble = (
+            probabilities[0] + torch.softmax(next_uniform, dim=1)
+        ) * 0.5
+        candidates = {
+            **logits,
+            "equal_probability_fusion": fixed_fusion.clamp_min(1e-12).log(),
+            "two_uniform_models": uniform_ensemble.clamp_min(1e-12).log(),
+        }
         result = {}
         for name, scores in candidates.items():
             visual = _metrics(scores, targets, validation)
             decoded = decode_sequences(scores, validation, prior, weight=1.0)
             sequence = _metrics(decoded, targets, validation, labels=True)
-            result[name] = {"visual": visual, "v3_sequence": sequence}
+            result[name] = {
+                "visual": visual,
+                "v3_sequence": sequence,
+                "visual_duration_slices": _duration_slices(
+                    scores, targets, validation
+                ),
+            }
         per_seed[str(seed)] = result
     aggregate = {}
-    for name in (*ARMS, "equal_probability_fusion"):
+    for name in METHODS:
         aggregate[name] = {}
         for stage in ("visual", "v3_sequence"):
             aggregate[name][stage] = {
@@ -134,13 +174,31 @@ def run(args: argparse.Namespace) -> dict:
                 - per_seed[str(seed)]["uniform"][stage]["macro_f1"]
                 for seed in SEEDS
             ],
+            "macro_f1_two_uniform_minus_uniform": [
+                per_seed[str(seed)]["two_uniform_models"][stage]["macro_f1"]
+                - per_seed[str(seed)]["uniform"][stage]["macro_f1"]
+                for seed in SEEDS
+            ],
+            "macro_f1_fusion_minus_two_uniform": [
+                per_seed[str(seed)]["equal_probability_fusion"][stage]["macro_f1"]
+                - per_seed[str(seed)]["two_uniform_models"][stage]["macro_f1"]
+                for seed in SEEDS
+            ],
         }
         for stage in ("visual", "v3_sequence")
     }
     summary = {
-        "schema_version": "fsn-fixed-dual-rate-fusion-diagnostic-1.0",
+        "schema_version": "fsn-fixed-dual-rate-fusion-diagnostic-1.1",
         "purpose": "diagnostic only; no trainable fusion parameters or validation-tuned weight",
         "fusion": "arithmetic mean of uniform and three-window softmax probabilities",
+        "control": (
+            "equal-cost arithmetic mean of two different-seed uniform models; "
+            "cyclic seed pairing 42+123, 123+2026, 2026+42"
+        ),
+        "short_clip_note": (
+            "for clips <=3s, three_windows sampling equals uniform sampling; "
+            "prediction differences there cannot establish a dense-frame benefit"
+        ),
         "sequence_prior": "train labels only; Laplace 1.0; Viterbi weight 1.0",
         "manifest_sha256": expected,
         "seeds": list(SEEDS),
@@ -170,7 +228,7 @@ def main() -> None:
             stage: result["aggregate"][name][stage]["macro_f1"]["mean"]
             for stage in ("visual", "v3_sequence")
         }
-        for name in (*ARMS, "equal_probability_fusion")
+        for name in METHODS
     }, ensure_ascii=False, indent=2))
 
 
