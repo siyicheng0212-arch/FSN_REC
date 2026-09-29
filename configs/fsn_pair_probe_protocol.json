@@ -1,0 +1,33 @@
+{
+  "schema_version": "fsn-pair-evidence-internal-protocol-1.0",
+  "status": "prepared_not_executed",
+  "purpose": "diagnose whether signed RGB changes contain pair-label information beyond same-capacity RGB",
+  "not_a_clinical_role_model": true,
+  "train_manifest_sha256": "f0fc0ace561cd59c471c86d6ec674144de0d5ede6acf447a5a021787538ebf0a",
+  "inner_validation_manifest_sha256": "d6449196c3798a233a593db19da9045c92e02ba62bb6fa5a55d41bf118ee6580",
+  "source_split": "video-group-disjoint subset of the original 7372 train clips",
+  "whole_split_counts": {"train": 6586, "inner_validation": 786},
+  "pair_train_counts": {"sweeping": 2893, "reperfusion": 877},
+  "pair_inner_validation_counts": {"sweeping": 357, "reperfusion": 109},
+  "initial_seed": 42,
+  "paired_modes": ["rgb_motion", "rgb_only"],
+  "negative_control_if_positive": "rgb_motion_shuffled_retrained_same_budget",
+  "frames": 36,
+  "crop_size": 224,
+  "epochs_max": 12,
+  "patience": 4,
+  "batch_size": 8,
+  "workers": 4,
+  "optimizer": "AdamW",
+  "lr": 0.001,
+  "weight_decay": 0.0001,
+  "class_weighting": "square_root_inverse_frequency",
+  "primary_readouts": [
+    "inner_validation_pair_macro_f1",
+    "pair_accuracy",
+    "sweeping_to_reperfusion_errors",
+    "reperfusion_to_sweeping_errors"
+  ],
+  "excluded_for_model_selection": "original 823-clip development validation and any independent test",
+  "role_supervision": "none; existing mutually exclusive primary labels cannot be used as clinician/patient activity targets"
+}
