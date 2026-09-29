@@ -13,6 +13,7 @@ import json
 import math
 import os
 import random
+import subprocess
 import time
 from collections import Counter
 from pathlib import Path
@@ -21,7 +22,7 @@ from typing import Any
 import numpy as np
 import torch
 import torch.nn.functional as F
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, RandomSampler
 
 from experiments.full_data import FullClipDataset
 from experiments.clip_evidence import FSNClipEvidence
@@ -34,6 +35,15 @@ from experiments.model_wrappers import (
     trainable_parameter_count,
 )
 from experiments.pilot_data import load_pilot_manifest
+from experiments.training_resume import (
+    RESUME_SCHEMA,
+    atomic_json_save,
+    atomic_torch_save,
+    capture_rng_state,
+    load_epoch_checkpoint,
+    protocol_fingerprint,
+    restore_rng_state,
+)
 
 
 def seed_all(seed: int) -> None:
@@ -49,6 +59,15 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def training_code_commit() -> str | None:
+    result = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True, text=True, check=False,
+    )
+    return result.stdout.strip() if result.returncode == 0 else None
 
 
 def validate_splits(manifest_dir: Path, include_test: bool) -> dict[str, Any]:
@@ -96,7 +115,10 @@ def evaluate(model: AdaFocusFSN | FSNClipEvidence | FSNDirectionalEvidence, load
     for batch in loader:
         video = batch["video"].to(device, non_blocking=True)
         target = batch["label"].to(device, non_blocking=True)
-        with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+        with torch.autocast(
+            device_type=device.type, dtype=torch.bfloat16,
+            enabled=device.type == "cuda",
+        ):
             logits = model(video)["logits"]
         logits_cpu, target_cpu = logits.float().cpu(), target.cpu()
         rows = metadata_rows(batch)
@@ -285,7 +307,10 @@ def train_epoch(
         target = batch["label"].to(device, non_blocking=True)
         group_start = ((batch_index - 1) // accumulation_steps) * accumulation_steps + 1
         group_size = min(accumulation_steps, total_batches - group_start + 1)
-        with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+        with torch.autocast(
+            device_type=device.type, dtype=torch.bfloat16,
+            enabled=device.type == "cuda",
+        ):
             output = model(video)
             native_loss = model.compute_loss(output, target)
             # An optional, identical objective for both Original and the new
@@ -310,10 +335,10 @@ def train_epoch(
     return float(np.mean(losses)), time.perf_counter() - started
 
 
-def run(args: argparse.Namespace) -> dict[str, Any]:
-    if not torch.cuda.is_available():
+def run(args: argparse.Namespace, device_override: torch.device | None = None) -> dict[str, Any]:
+    if device_override is None and not torch.cuda.is_available():
         raise RuntimeError("formal training requires CUDA")
-    device = torch.device("cuda:0")
+    device = device_override or torch.device("cuda:0")
     if args.variant in ("iea", "directional_evidence") and args.sampling != "uniform":
         raise ValueError("evidence candidates require the frozen 36-frame uniform sampler")
     if args.pairwise_loss_weight < 0:
@@ -332,17 +357,30 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         )
         for split in split_names
     }
-    generator = torch.Generator().manual_seed(args.seed)
+    sampler_generator = torch.Generator().manual_seed(args.seed)
+    # The previous trainer passed one generator to DataLoader for both worker
+    # base seeds and RandomSampler. Its persistent workers consume one base
+    # seed at the first iterator only. Preserve that first draw while giving
+    # the sampler its own state, so worker recreation after a restart cannot
+    # shift the resumed training order.
+    torch.empty((), dtype=torch.int64).random_(generator=sampler_generator)
+    worker_generators = {
+        split: torch.Generator().manual_seed(args.seed + 1000 + index)
+        for index, split in enumerate(split_names)
+    }
     loaders = {
         split: DataLoader(
             dataset,
             batch_size=args.batch_size,
-            shuffle=split == "train",
+            sampler=(
+                RandomSampler(dataset, generator=sampler_generator)
+                if split == "train" else None
+            ),
             num_workers=args.workers,
             pin_memory=True,
             persistent_workers=args.workers > 0,
             drop_last=split == "train",
-            generator=generator if split == "train" else None,
+            generator=worker_generators[split],
         )
         for split, dataset in datasets.items()
     }
@@ -353,8 +391,92 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     augmentation_generator = torch.Generator().manual_seed(args.seed + 1)
     output_dir = args.output_dir / args.variant / f"seed_{args.seed}"
     output_dir.mkdir(parents=True, exist_ok=True)
-    history, best_macro_f1, best_epoch, stale = [], -1.0, None, 0
     best_path = output_dir / "best.pt"
+    last_path = output_dir / "last.pt"
+    result_path = output_dir / "result.json"
+    resume_from = getattr(args, "resume_from", None)
+    if result_path.exists():
+        raise RuntimeError("result.json already exists; refusing to overwrite a completed run")
+    if resume_from is None and (best_path.exists() or last_path.exists()):
+        raise RuntimeError("checkpoint already exists; use --resume-from last.pt or a new output directory")
+    checkpoint_digest = sha256_file(args.checkpoint) if args.checkpoint else None
+    code_commit = training_code_commit()
+    fingerprint = protocol_fingerprint(
+        args, split_audit, checkpoint_digest, code_commit
+    )
+    resume_state = (
+        load_epoch_checkpoint(Path(resume_from), fingerprint)
+        if resume_from is not None else None
+    )
+    history = list(resume_state["history"]) if resume_state else []
+    best_macro_f1 = float(resume_state["best_val_macro_f1"]) if resume_state else -1.0
+    best_epoch = resume_state["best_epoch"] if resume_state else None
+    stale = int(resume_state["stale"]) if resume_state else 0
+    if resume_state:
+        model.load_state_dict(resume_state["model"])
+        load_report = resume_state["load_report"]
+
+    def best_payload(phase: str, epoch: int, groups: list[dict[str, Any]]) -> dict[str, Any]:
+        return {
+            "model": model.state_dict(),
+            "epoch": best_epoch if phase == "head_warmup" else epoch,
+            "val_macro_f1": best_macro_f1,
+            "split_audit": split_audit,
+            "load_report": load_report,
+            "optimizer_groups": groups,
+            "code_commit": code_commit,
+            "args": vars(args),
+        }
+
+    def save_epoch_state(
+        phase: str, epoch: int, optimizer: torch.optim.Optimizer,
+        scheduler: torch.optim.lr_scheduler.LRScheduler | None,
+        groups: list[dict[str, Any]], is_best: bool,
+    ) -> None:
+        state = {
+            "schema_version": RESUME_SCHEMA,
+            "protocol_fingerprint": fingerprint,
+            "code_commit": code_commit,
+            "phase": phase,
+            "epoch": epoch,
+            "model": model.state_dict(),
+            "optimizer": optimizer.state_dict(),
+            "scheduler": scheduler.state_dict() if scheduler is not None else None,
+            "best_epoch": best_epoch,
+            "best_val_macro_f1": best_macro_f1,
+            "best_is_current": is_best,
+            "stale": stale,
+            "history": history,
+            "rng": capture_rng_state(
+                sampler_generator, worker_generators, augmentation_generator
+            ),
+            "load_report": load_report,
+            "optimizer_groups": groups,
+        }
+        # Save the complete epoch first. If interrupted before best.pt is
+        # refreshed, the best model can be reconstructed from last.pt.
+        atomic_torch_save(state, last_path)
+        if is_best:
+            atomic_torch_save(best_payload(phase, epoch, groups), best_path)
+
+    if resume_state:
+        saved_best = None
+        if best_path.exists():
+            try:
+                saved_best = float(torch.load(
+                    best_path, map_location="cpu", weights_only=False
+                )["val_macro_f1"])
+            except Exception:
+                # An interrupted or corrupt best.pt can be reconstructed only
+                # when last.pt itself contains that best model.
+                saved_best = None
+        if saved_best is None or saved_best < best_macro_f1:
+            if not resume_state["best_is_current"]:
+                raise RuntimeError("best.pt is absent/stale but last.pt cannot reconstruct it")
+            atomic_torch_save(best_payload(
+                resume_state["phase"], resume_state["epoch"],
+                resume_state["optimizer_groups"],
+            ), best_path)
 
     original_requires_grad = {
         id(parameter): parameter.requires_grad for parameter in model.parameters()
@@ -375,13 +497,25 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "initial_lr": args.head_warmup_lr,
         "weight_decay": 0.0,
     }]
-    if args.head_warmup_epochs:
+    if args.head_warmup_epochs and not (
+        resume_state and resume_state["phase"] == "finetune"
+    ):
         for parameter in model.parameters():
             parameter.requires_grad = id(parameter) in head_parameter_ids
         warmup_optimizer = torch.optim.AdamW(
             head_parameters, lr=args.head_warmup_lr, weight_decay=0.0
         )
-        for epoch in range(1, args.head_warmup_epochs + 1):
+        warmup_start = 1
+        if resume_state:
+            warmup_optimizer.load_state_dict(resume_state["optimizer"])
+            restore_rng_state(
+                resume_state["rng"], sampler_generator,
+                worker_generators, augmentation_generator,
+            )
+            warmup_start = resume_state["epoch"] + 1
+            if warmup_start > args.head_warmup_epochs + 1:
+                raise ValueError("warm-up resume epoch exceeds configured duration")
+        for epoch in range(warmup_start, args.head_warmup_epochs + 1):
             train_loss, train_seconds = train_epoch(
                 model, loaders["train"], warmup_optimizer, device,
                 args.accumulation_steps, args.clip_grad,
@@ -389,6 +523,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             )
             val_metrics, _, val_seconds = evaluate(model, loaders["val"], device)
             macro_f1 = val_metrics["all"]["macro_f1"]
+            if not math.isfinite(macro_f1):
+                raise RuntimeError("non-finite validation macro-F1 during head warm-up")
             row = {
                 "phase": "head_warmup", "epoch": epoch,
                 "train_loss": train_loss, "train_seconds": train_seconds,
@@ -402,23 +538,36 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "epoch": epoch, "loss": train_loss,
                 "val_macro_f1": macro_f1,
             }), flush=True)
-            if macro_f1 > best_macro_f1:
+            is_best = macro_f1 > best_macro_f1
+            if is_best:
                 best_macro_f1, best_epoch = macro_f1, f"head_warmup_{epoch}"
-                torch.save({
-                    "model": model.state_dict(), "epoch": best_epoch,
-                    "val_macro_f1": macro_f1, "split_audit": split_audit,
-                    "load_report": load_report,
-                    "optimizer_groups": warmup_optimizer_groups,
-                    "args": vars(args),
-                }, best_path)
+            save_epoch_state(
+                "head_warmup", epoch, warmup_optimizer, None,
+                warmup_optimizer_groups, is_best,
+            )
         del warmup_optimizer
         for parameter in model.parameters():
             parameter.requires_grad = original_requires_grad[id(parameter)]
 
     optimizer, optimizer_groups = make_optimizer(model, args)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
+    finetune_start = 1
+    if resume_state and resume_state["phase"] == "finetune":
+        optimizer.load_state_dict(resume_state["optimizer"])
+        scheduler.load_state_dict(resume_state["scheduler"])
+        restore_rng_state(
+            resume_state["rng"], sampler_generator,
+            worker_generators, augmentation_generator,
+        )
+        finetune_start = resume_state["epoch"] + 1
+        if finetune_start > args.epochs + 1:
+            raise ValueError("finetune resume epoch exceeds configured duration")
+        if stale >= args.patience:
+            # The prior process finished its stopping condition after writing
+            # last.pt but may have been interrupted before result.json.
+            finetune_start = args.epochs + 1
 
-    for epoch in range(1, args.epochs + 1):
+    for epoch in range(finetune_start, args.epochs + 1):
         train_loss, train_seconds = train_epoch(
             model, loaders["train"], optimizer, device,
             args.accumulation_steps, args.clip_grad,
@@ -427,6 +576,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         scheduler.step()
         val_metrics, _, val_seconds = evaluate(model, loaders["val"], device)
         macro_f1 = val_metrics["all"]["macro_f1"]
+        if not math.isfinite(macro_f1):
+            raise RuntimeError("non-finite validation macro-F1 during fine-tuning")
         row = {
             "phase": "finetune", "epoch": epoch,
             "train_loss": train_loss,
@@ -443,18 +594,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "variant": args.variant, "phase": "finetune", "epoch": epoch,
             "loss": row["train_loss"], "val_macro_f1": macro_f1,
         }), flush=True)
-        if macro_f1 > best_macro_f1:
+        is_best = macro_f1 > best_macro_f1
+        if is_best:
             best_macro_f1, best_epoch, stale = macro_f1, f"finetune_{epoch}", 0
-            torch.save({
-                "model": model.state_dict(), "epoch": epoch,
-                "val_macro_f1": macro_f1, "split_audit": split_audit,
-                "load_report": load_report, "optimizer_groups": optimizer_groups,
-                "args": vars(args),
-            }, best_path)
         else:
             stale += 1
-            if stale >= args.patience:
-                break
+        save_epoch_state(
+            "finetune", epoch, optimizer, scheduler, optimizer_groups, is_best
+        )
+        if stale >= args.patience:
+            break
 
     checkpoint = torch.load(best_path, map_location=device, weights_only=False)
     model.load_state_dict(checkpoint["model"])
@@ -477,14 +626,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "optimizer_groups": optimizer_groups,
         "best_epoch": best_epoch,
         "best_val_macro_f1": best_macro_f1,
+        "code_commit": code_commit,
+        "resumed_from_epoch": (
+            f"{resume_state['phase']}_{resume_state['epoch']}"
+            if resume_state else None
+        ),
         "history": history,
         "test_seconds": test_seconds,
         "test_metrics": test_metrics,
     }
-    (output_dir / "result.json").write_text(
-        json.dumps(result, ensure_ascii=False, indent=2, default=str) + "\n",
-        encoding="utf-8",
-    )
+    atomic_json_save(result, result_path)
     return result
 
 
@@ -496,6 +647,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sampling", choices=("uniform", "three_windows"), default="uniform")
     parser.add_argument("--output-dir", type=Path, default=Path("formal_results"))
     parser.add_argument("--checkpoint", type=Path)
+    parser.add_argument(
+        "--resume-from", type=Path,
+        help="resume at the next epoch from a trusted last.pt; old best.pt is not resumable",
+    )
     parser.add_argument("--allow-random-init", action="store_true")
     parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--patience", type=int, default=10)
@@ -532,6 +687,8 @@ def parse_args() -> argparse.Namespace:
     args.output_dir = args.output_dir.resolve()
     if args.checkpoint:
         args.checkpoint = args.checkpoint.resolve()
+    if args.resume_from:
+        args.resume_from = args.resume_from.resolve()
     return args
 
 
