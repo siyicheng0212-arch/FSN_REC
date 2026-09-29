@@ -1,6 +1,6 @@
 {
   "schema_version": "fsn-motion-pilot-status-1.0",
-  "state": "running",
+  "state": "complete",
   "source_code_commit": "b652ca4e870def29052903fc26f42dfb0a21e5c6",
   "protocol": "configs/motion_sampling_protocol.json",
   "started_at": "2026-09-29T00:35:52+08:00",
@@ -38,5 +38,25 @@
       ]
     }
   },
-  "test_metrics": null
+  "test_metrics": null,
+  "completed_seeds": {
+    "uniform": [
+      42,
+      123,
+      2026
+    ],
+    "three_windows": [
+      42,
+      123,
+      2026
+    ]
+  },
+  "aggregate_validation_macro_f1": {
+    "uniform": 0.7796470574437381,
+    "three_windows": 0.7628688039376964,
+    "paired_dense_minus_uniform": -0.016778253506041712
+  },
+  "report": "public_results/fsn/motion_pilot/README.md",
+  "aggregate_json": "public_results/fsn/motion_pilot/three_seed_comparison.json",
+  "learning_curves_svg": "public_results/fsn/motion_pilot/learning_curves.svg"
 }
