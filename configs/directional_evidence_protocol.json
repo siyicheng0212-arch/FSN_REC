@@ -25,6 +25,8 @@
   "evidence_quality_gate": true,
   "evidence_ambiguity_gate": true,
   "test_after_training": false,
+  "resume_checkpoint": "last.pt after every complete warm-up or finetune epoch",
+  "resume_scope": "next_epoch_only_same_commit_data_seed_and_hyperparameters",
   "role_semantics": "latent_activity_streams_not_clinician_patient_labels",
   "model_selection_note": "The 823 clips are evaluated each epoch and select the best checkpoint; they are not an independent test set.",
   "primary_readouts": [
