@@ -1,0 +1,1474 @@
+{
+  "schema_version": "fsn-directional-four-gpu-safe-summary-1.0",
+  "status": "complete_negative_method_gate",
+  "selection_split": "823-clip development validation; checkpoint selected on this split every epoch; not an independent test",
+  "protocol": {
+    "train_clips": 7372,
+    "development_validation_clips": 823,
+    "train_manifest_sha256": "093d0adf08dc1d382c0d2e1863a2f4724cb24ebd5b3d0af070e0c76ca989f1d3",
+    "validation_manifest_sha256": "ad785ec18b14b63616582a143384fac649e69e27d142dfcf87c6852f9d3c6f02",
+    "four_gpu_run_code_commit": "5e01c6b33b6e06831d6ec2bad8394eaf45bb9923",
+    "reused_original_42_and_2026_run_code_commit": "0ad5aa37be749bc6257ec922aa899df3015dea99",
+    "seeds": [
+      42,
+      2026,
+      1217
+    ],
+    "uniform_frames": 36,
+    "head_warmup_epochs": 5,
+    "max_finetune_epochs": 100,
+    "patience": 10,
+    "batch_size": 4,
+    "accumulation_steps": 16,
+    "base_lr": 0.002,
+    "class_weight_mode": "sqrt_inverse",
+    "test_after_training": false
+  },
+  "comparison_caveat": "Original seed 2026 was interrupted before normal early stopping; its finetune-39 best.pt was re-inferred on the same 823 development-validation clips. Other five runs ended normally.",
+  "runs": [
+    {
+      "variant": "directional_evidence",
+      "seed": 42,
+      "best_epoch": "finetune_27",
+      "metrics": {
+        "macro_f1": 0.7688641952982432,
+        "accuracy": 0.8055893074119077,
+        "micro_f1": 0.8055893074119077,
+        "weighted_f1": 0.8082589242485853,
+        "num_samples": 823,
+        "per_class": [
+          {
+            "class_id": 0,
+            "class_name": "消毒",
+            "precision": 0.7272727272727273,
+            "recall": 0.8,
+            "f1": 0.761904761904762,
+            "support": 40
+          },
+          {
+            "class_id": 1,
+            "class_name": "进针",
+            "precision": 0.875,
+            "recall": 0.8823529411764706,
+            "f1": 0.8786610878661087,
+            "support": 119
+          },
+          {
+            "class_id": 2,
+            "class_name": "运针",
+            "precision": 0.8050314465408805,
+            "recall": 0.847682119205298,
+            "f1": 0.8258064516129032,
+            "support": 151
+          },
+          {
+            "class_id": 3,
+            "class_name": "扫散",
+            "precision": 0.8681318681318682,
+            "recall": 0.8165374677002584,
+            "f1": 0.8415446071904128,
+            "support": 387
+          },
+          {
+            "class_id": 4,
+            "class_name": "再灌注",
+            "precision": 0.4823529411764706,
+            "recall": 0.5694444444444444,
+            "f1": 0.5222929936305731,
+            "support": 72
+          },
+          {
+            "class_id": 5,
+            "class_name": "拔针",
+            "precision": 0.8181818181818182,
+            "recall": 0.75,
+            "f1": 0.7826086956521738,
+            "support": 48
+          },
+          {
+            "class_id": 6,
+            "class_name": "固定",
+            "precision": 0.7142857142857143,
+            "recall": 0.8333333333333334,
+            "f1": 0.7692307692307692,
+            "support": 6
+          }
+        ],
+        "confusion_matrix": [
+          [
+            32,
+            1,
+            2,
+            3,
+            0,
+            2,
+            0
+          ],
+          [
+            1,
+            105,
+            5,
+            3,
+            0,
+            4,
+            1
+          ],
+          [
+            1,
+            6,
+            128,
+            15,
+            1,
+            0,
+            0
+          ],
+          [
+            5,
+            4,
+            18,
+            316,
+            42,
+            2,
+            0
+          ],
+          [
+            1,
+            3,
+            2,
+            25,
+            41,
+            0,
+            0
+          ],
+          [
+            3,
+            1,
+            4,
+            2,
+            1,
+            36,
+            1
+          ],
+          [
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            5
+          ]
+        ],
+        "sweep_to_reperfusion": 42,
+        "reperfusion_to_sweep": 25
+      },
+      "trainable_parameters": 27224006,
+      "epochs_completed": {
+        "head_warmup": 5,
+        "finetune": 37
+      },
+      "train_hours": 2.4817,
+      "last_train_loss": 0.22050441286879213,
+      "last_val_macro_f1": 0.7467733943234608,
+      "complete": true,
+      "slices": {
+        "duration_le_10s": {
+          "num_samples": 651,
+          "macro_f1": 0.779755388172277,
+          "present_class_macro_f1": 0.779755388172277,
+          "accuracy": 0.8218125960061444
+        },
+        "duration_gt_10s": {
+          "num_samples": 172,
+          "macro_f1": 0.47213032581453634,
+          "present_class_macro_f1": 0.6609824561403509,
+          "accuracy": 0.7441860465116279
+        },
+        "source_collection": {
+          "FSN": {
+            "num_samples": 166,
+            "macro_f1": 0.644887493458922,
+            "present_class_macro_f1": 0.644887493458922,
+            "accuracy": 0.6987951807228916
+          },
+          "bilibili": {
+            "num_samples": 37,
+            "macro_f1": 0.5551611949127476,
+            "present_class_macro_f1": 0.7772256728778467,
+            "accuracy": 0.7567567567567568
+          },
+          "dy": {
+            "num_samples": 263,
+            "macro_f1": 0.7124415453068865,
+            "present_class_macro_f1": 0.8311818028580342,
+            "accuracy": 0.8593155893536122
+          },
+          "ks": {
+            "num_samples": 34,
+            "macro_f1": 0.510482374768089,
+            "present_class_macro_f1": 0.8933441558441558,
+            "accuracy": 0.9117647058823529
+          },
+          "lishui": {
+            "num_samples": 209,
+            "macro_f1": 0.7859271530035635,
+            "present_class_macro_f1": 0.7859271530035635,
+            "accuracy": 0.8373205741626795
+          },
+          "menzhen": {
+            "num_samples": 89,
+            "macro_f1": 0.7825573749943499,
+            "present_class_macro_f1": 0.7825573749943499,
+            "accuracy": 0.7640449438202247
+          },
+          "youtube": {
+            "num_samples": 25,
+            "macro_f1": 0.5904761904761904,
+            "present_class_macro_f1": 0.8266666666666665,
+            "accuracy": 0.76
+          }
+        }
+      }
+    },
+    {
+      "variant": "directional_evidence",
+      "seed": 2026,
+      "best_epoch": "finetune_18",
+      "metrics": {
+        "macro_f1": 0.7568325182120542,
+        "accuracy": 0.8201701093560145,
+        "micro_f1": 0.8201701093560145,
+        "weighted_f1": 0.8199918147840953,
+        "num_samples": 823,
+        "per_class": [
+          {
+            "class_id": 0,
+            "class_name": "消毒",
+            "precision": 0.8055555555555556,
+            "recall": 0.725,
+            "f1": 0.7631578947368423,
+            "support": 40
+          },
+          {
+            "class_id": 1,
+            "class_name": "进针",
+            "precision": 0.9196428571428571,
+            "recall": 0.865546218487395,
+            "f1": 0.8917748917748918,
+            "support": 119
+          },
+          {
+            "class_id": 2,
+            "class_name": "运针",
+            "precision": 0.8551724137931035,
+            "recall": 0.8211920529801324,
+            "f1": 0.8378378378378378,
+            "support": 151
+          },
+          {
+            "class_id": 3,
+            "class_name": "扫散",
+            "precision": 0.8268292682926829,
+            "recall": 0.875968992248062,
+            "f1": 0.85069008782936,
+            "support": 387
+          },
+          {
+            "class_id": 4,
+            "class_name": "再灌注",
+            "precision": 0.5735294117647058,
+            "recall": 0.5416666666666666,
+            "f1": 0.557142857142857,
+            "support": 72
+          },
+          {
+            "class_id": 5,
+            "class_name": "拔针",
+            "precision": 0.8780487804878049,
+            "recall": 0.75,
+            "f1": 0.8089887640449439,
+            "support": 48
+          },
+          {
+            "class_id": 6,
+            "class_name": "固定",
+            "precision": 0.45454545454545453,
+            "recall": 0.8333333333333334,
+            "f1": 0.5882352941176471,
+            "support": 6
+          }
+        ],
+        "confusion_matrix": [
+          [
+            29,
+            2,
+            1,
+            6,
+            0,
+            2,
+            0
+          ],
+          [
+            0,
+            103,
+            5,
+            8,
+            0,
+            2,
+            1
+          ],
+          [
+            1,
+            4,
+            124,
+            22,
+            0,
+            0,
+            0
+          ],
+          [
+            4,
+            3,
+            9,
+            339,
+            28,
+            1,
+            3
+          ],
+          [
+            0,
+            0,
+            3,
+            30,
+            39,
+            0,
+            0
+          ],
+          [
+            2,
+            0,
+            3,
+            5,
+            0,
+            36,
+            2
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            5
+          ]
+        ],
+        "sweep_to_reperfusion": 28,
+        "reperfusion_to_sweep": 30
+      },
+      "trainable_parameters": 27224006,
+      "epochs_completed": {
+        "head_warmup": 5,
+        "finetune": 28
+      },
+      "train_hours": 1.9438,
+      "last_train_loss": 0.512520215428242,
+      "last_val_macro_f1": 0.6881672758434928,
+      "complete": true,
+      "slices": {
+        "duration_le_10s": {
+          "num_samples": 651,
+          "macro_f1": 0.7306115083370249,
+          "present_class_macro_f1": 0.7306115083370249,
+          "accuracy": 0.8187403993855606
+        },
+        "duration_gt_10s": {
+          "num_samples": 172,
+          "macro_f1": 0.5997333662130296,
+          "present_class_macro_f1": 0.8396267126982415,
+          "accuracy": 0.8255813953488372
+        },
+        "source_collection": {
+          "FSN": {
+            "num_samples": 166,
+            "macro_f1": 0.7001331906123388,
+            "present_class_macro_f1": 0.7001331906123388,
+            "accuracy": 0.7530120481927711
+          },
+          "bilibili": {
+            "num_samples": 37,
+            "macro_f1": 0.5083484631310718,
+            "present_class_macro_f1": 0.7116878483835005,
+            "accuracy": 0.6756756756756757
+          },
+          "dy": {
+            "num_samples": 263,
+            "macro_f1": 0.6827706049481715,
+            "present_class_macro_f1": 0.7965657057728669,
+            "accuracy": 0.844106463878327
+          },
+          "ks": {
+            "num_samples": 34,
+            "macro_f1": 0.49401578813343516,
+            "present_class_macro_f1": 0.8645276292335116,
+            "accuracy": 0.8823529411764706
+          },
+          "lishui": {
+            "num_samples": 209,
+            "macro_f1": 0.8051117298844688,
+            "present_class_macro_f1": 0.8051117298844688,
+            "accuracy": 0.84688995215311
+          },
+          "menzhen": {
+            "num_samples": 89,
+            "macro_f1": 0.8156522981970049,
+            "present_class_macro_f1": 0.8156522981970049,
+            "accuracy": 0.8426966292134831
+          },
+          "youtube": {
+            "num_samples": 25,
+            "macro_f1": 0.509031198686371,
+            "present_class_macro_f1": 0.7126436781609196,
+            "accuracy": 0.84
+          }
+        }
+      }
+    },
+    {
+      "variant": "directional_evidence",
+      "seed": 1217,
+      "best_epoch": "finetune_45",
+      "metrics": {
+        "macro_f1": 0.7870719697916737,
+        "accuracy": 0.8128797083839611,
+        "micro_f1": 0.8128797083839611,
+        "weighted_f1": 0.8102381942425645,
+        "num_samples": 823,
+        "per_class": [
+          {
+            "class_id": 0,
+            "class_name": "消毒",
+            "precision": 0.7941176470588235,
+            "recall": 0.675,
+            "f1": 0.7297297297297296,
+            "support": 40
+          },
+          {
+            "class_id": 1,
+            "class_name": "进针",
+            "precision": 0.9369369369369369,
+            "recall": 0.8739495798319328,
+            "f1": 0.9043478260869565,
+            "support": 119
+          },
+          {
+            "class_id": 2,
+            "class_name": "运针",
+            "precision": 0.8931297709923665,
+            "recall": 0.7748344370860927,
+            "f1": 0.8297872340425533,
+            "support": 151
+          },
+          {
+            "class_id": 3,
+            "class_name": "扫散",
+            "precision": 0.7899543378995434,
+            "recall": 0.8940568475452196,
+            "f1": 0.8387878787878789,
+            "support": 387
+          },
+          {
+            "class_id": 4,
+            "class_name": "再灌注",
+            "precision": 0.5666666666666667,
+            "recall": 0.4722222222222222,
+            "f1": 0.5151515151515152,
+            "support": 72
+          },
+          {
+            "class_id": 5,
+            "class_name": "拔针",
+            "precision": 0.8181818181818182,
+            "recall": 0.75,
+            "f1": 0.7826086956521738,
+            "support": 48
+          },
+          {
+            "class_id": 6,
+            "class_name": "固定",
+            "precision": 1,
+            "recall": 0.8333333333333334,
+            "f1": 0.9090909090909091,
+            "support": 6
+          }
+        ],
+        "confusion_matrix": [
+          [
+            27,
+            1,
+            1,
+            8,
+            0,
+            3,
+            0
+          ],
+          [
+            0,
+            104,
+            2,
+            10,
+            0,
+            3,
+            0
+          ],
+          [
+            0,
+            2,
+            117,
+            30,
+            1,
+            1,
+            0
+          ],
+          [
+            5,
+            3,
+            8,
+            346,
+            24,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            38,
+            34,
+            0,
+            0
+          ],
+          [
+            2,
+            1,
+            3,
+            5,
+            1,
+            36,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            5
+          ]
+        ],
+        "sweep_to_reperfusion": 24,
+        "reperfusion_to_sweep": 38
+      },
+      "trainable_parameters": 27224006,
+      "epochs_completed": {
+        "head_warmup": 5,
+        "finetune": 55
+      },
+      "train_hours": 3.6776,
+      "last_train_loss": 0.09239392015980183,
+      "last_val_macro_f1": 0.7345020628815757,
+      "complete": true,
+      "slices": {
+        "duration_le_10s": {
+          "num_samples": 651,
+          "macro_f1": 0.7982891312534806,
+          "present_class_macro_f1": 0.7982891312534806,
+          "accuracy": 0.8187403993855606
+        },
+        "duration_gt_10s": {
+          "num_samples": 172,
+          "macro_f1": 0.527434866235356,
+          "present_class_macro_f1": 0.7384088127294981,
+          "accuracy": 0.7906976744186046
+        },
+        "source_collection": {
+          "FSN": {
+            "num_samples": 166,
+            "macro_f1": 0.6404762401629628,
+            "present_class_macro_f1": 0.6404762401629628,
+            "accuracy": 0.7228915662650602
+          },
+          "bilibili": {
+            "num_samples": 37,
+            "macro_f1": 0.5296555296555296,
+            "present_class_macro_f1": 0.7415177415177415,
+            "accuracy": 0.7027027027027027
+          },
+          "dy": {
+            "num_samples": 263,
+            "macro_f1": 0.7199478503462275,
+            "present_class_macro_f1": 0.8399391587372654,
+            "accuracy": 0.870722433460076
+          },
+          "ks": {
+            "num_samples": 34,
+            "macro_f1": 0.44389844389844396,
+            "present_class_macro_f1": 0.7768222768222769,
+            "accuracy": 0.8529411764705882
+          },
+          "lishui": {
+            "num_samples": 209,
+            "macro_f1": 0.7660918313724354,
+            "present_class_macro_f1": 0.7660918313724354,
+            "accuracy": 0.8181818181818182
+          },
+          "menzhen": {
+            "num_samples": 89,
+            "macro_f1": 0.8101654661010798,
+            "present_class_macro_f1": 0.8101654661010798,
+            "accuracy": 0.8089887640449438
+          },
+          "youtube": {
+            "num_samples": 25,
+            "macro_f1": 0.6518883415435139,
+            "present_class_macro_f1": 0.9126436781609195,
+            "accuracy": 0.88
+          }
+        }
+      }
+    },
+    {
+      "variant": "original",
+      "seed": 42,
+      "best_epoch": "finetune_16",
+      "metrics": {
+        "macro_f1": 0.7637841231068652,
+        "accuracy": 0.8262454434993924,
+        "micro_f1": 0.8262454434993924,
+        "weighted_f1": 0.8232699027489471,
+        "num_samples": 823,
+        "per_class": [
+          {
+            "class_id": 0,
+            "class_name": "消毒",
+            "precision": 0.775,
+            "recall": 0.775,
+            "f1": 0.775,
+            "support": 40
+          },
+          {
+            "class_id": 1,
+            "class_name": "进针",
+            "precision": 0.8842975206611571,
+            "recall": 0.8991596638655462,
+            "f1": 0.8916666666666667,
+            "support": 119
+          },
+          {
+            "class_id": 2,
+            "class_name": "运针",
+            "precision": 0.84,
+            "recall": 0.8344370860927153,
+            "f1": 0.8372093023255813,
+            "support": 151
+          },
+          {
+            "class_id": 3,
+            "class_name": "扫散",
+            "precision": 0.8461538461538461,
+            "recall": 0.8811369509043928,
+            "f1": 0.8632911392405064,
+            "support": 387
+          },
+          {
+            "class_id": 4,
+            "class_name": "再灌注",
+            "precision": 0.603448275862069,
+            "recall": 0.4861111111111111,
+            "f1": 0.5384615384615384,
+            "support": 72
+          },
+          {
+            "class_id": 5,
+            "class_name": "拔针",
+            "precision": 0.8,
+            "recall": 0.75,
+            "f1": 0.7741935483870969,
+            "support": 48
+          },
+          {
+            "class_id": 6,
+            "class_name": "固定",
+            "precision": 0.6666666666666666,
+            "recall": 0.6666666666666666,
+            "f1": 0.6666666666666666,
+            "support": 6
+          }
+        ],
+        "confusion_matrix": [
+          [
+            31,
+            1,
+            2,
+            4,
+            0,
+            2,
+            0
+          ],
+          [
+            0,
+            107,
+            5,
+            4,
+            0,
+            3,
+            0
+          ],
+          [
+            1,
+            5,
+            126,
+            17,
+            1,
+            1,
+            0
+          ],
+          [
+            5,
+            6,
+            10,
+            341,
+            22,
+            2,
+            1
+          ],
+          [
+            0,
+            2,
+            1,
+            33,
+            35,
+            1,
+            0
+          ],
+          [
+            2,
+            0,
+            6,
+            3,
+            0,
+            36,
+            1
+          ],
+          [
+            1,
+            0,
+            0,
+            1,
+            0,
+            0,
+            4
+          ]
+        ],
+        "sweep_to_reperfusion": 22,
+        "reperfusion_to_sweep": 33
+      },
+      "trainable_parameters": 27208867,
+      "epochs_completed": {
+        "head_warmup": 5,
+        "finetune": 26
+      },
+      "train_hours": 1.6503,
+      "last_train_loss": 0.49587236266709284,
+      "last_val_macro_f1": 0.7515969636092749,
+      "complete": true,
+      "slices": {
+        "duration_le_10s": {
+          "num_samples": 651,
+          "macro_f1": 0.7362766094290796,
+          "present_class_macro_f1": 0.7362766094290796,
+          "accuracy": 0.8279569892473119
+        },
+        "duration_gt_10s": {
+          "num_samples": 172,
+          "macro_f1": 0.5326720161748909,
+          "present_class_macro_f1": 0.7457408226448473,
+          "accuracy": 0.8197674418604651
+        },
+        "source_collection": {
+          "FSN": {
+            "num_samples": 166,
+            "macro_f1": 0.7434504103036873,
+            "present_class_macro_f1": 0.7434504103036873,
+            "accuracy": 0.7951807228915663
+          },
+          "bilibili": {
+            "num_samples": 37,
+            "macro_f1": 0.5444704363959023,
+            "present_class_macro_f1": 0.7622586109542632,
+            "accuracy": 0.6756756756756757
+          },
+          "dy": {
+            "num_samples": 263,
+            "macro_f1": 0.6928120210233055,
+            "present_class_macro_f1": 0.8082806911938564,
+            "accuracy": 0.8593155893536122
+          },
+          "ks": {
+            "num_samples": 34,
+            "macro_f1": 0.510482374768089,
+            "present_class_macro_f1": 0.8933441558441558,
+            "accuracy": 0.9117647058823529
+          },
+          "lishui": {
+            "num_samples": 209,
+            "macro_f1": 0.7554366959212346,
+            "present_class_macro_f1": 0.7554366959212346,
+            "accuracy": 0.8325358851674641
+          },
+          "menzhen": {
+            "num_samples": 89,
+            "macro_f1": 0.8122220769279593,
+            "present_class_macro_f1": 0.8122220769279593,
+            "accuracy": 0.797752808988764
+          },
+          "youtube": {
+            "num_samples": 25,
+            "macro_f1": 0.520935960591133,
+            "present_class_macro_f1": 0.7293103448275862,
+            "accuracy": 0.84
+          }
+        }
+      }
+    },
+    {
+      "variant": "original",
+      "seed": 1217,
+      "best_epoch": "finetune_15",
+      "metrics": {
+        "macro_f1": 0.7524325924779279,
+        "accuracy": 0.8080194410692588,
+        "micro_f1": 0.8080194410692588,
+        "weighted_f1": 0.8051516300490945,
+        "num_samples": 823,
+        "per_class": [
+          {
+            "class_id": 0,
+            "class_name": "消毒",
+            "precision": 0.7560975609756098,
+            "recall": 0.775,
+            "f1": 0.7654320987654322,
+            "support": 40
+          },
+          {
+            "class_id": 1,
+            "class_name": "进针",
+            "precision": 0.8803418803418803,
+            "recall": 0.865546218487395,
+            "f1": 0.8728813559322035,
+            "support": 119
+          },
+          {
+            "class_id": 2,
+            "class_name": "运针",
+            "precision": 0.9032258064516129,
+            "recall": 0.7417218543046358,
+            "f1": 0.8145454545454546,
+            "support": 151
+          },
+          {
+            "class_id": 3,
+            "class_name": "扫散",
+            "precision": 0.7963386727688787,
+            "recall": 0.8992248062015504,
+            "f1": 0.8446601941747574,
+            "support": 387
+          },
+          {
+            "class_id": 4,
+            "class_name": "再灌注",
+            "precision": 0.5238095238095238,
+            "recall": 0.4583333333333333,
+            "f1": 0.4888888888888889,
+            "support": 72
+          },
+          {
+            "class_id": 5,
+            "class_name": "拔针",
+            "precision": 0.9210526315789473,
+            "recall": 0.7291666666666666,
+            "f1": 0.8139534883720931,
+            "support": 48
+          },
+          {
+            "class_id": 6,
+            "class_name": "固定",
+            "precision": 1,
+            "recall": 0.5,
+            "f1": 0.6666666666666666,
+            "support": 6
+          }
+        ],
+        "confusion_matrix": [
+          [
+            31,
+            1,
+            1,
+            6,
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            103,
+            5,
+            10,
+            0,
+            1,
+            0
+          ],
+          [
+            1,
+            7,
+            112,
+            29,
+            2,
+            0,
+            0
+          ],
+          [
+            5,
+            2,
+            4,
+            348,
+            27,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            39,
+            33,
+            0,
+            0
+          ],
+          [
+            4,
+            3,
+            2,
+            4,
+            0,
+            35,
+            0
+          ],
+          [
+            0,
+            1,
+            0,
+            1,
+            1,
+            0,
+            3
+          ]
+        ],
+        "sweep_to_reperfusion": 27,
+        "reperfusion_to_sweep": 39
+      },
+      "trainable_parameters": 27208867,
+      "epochs_completed": {
+        "head_warmup": 5,
+        "finetune": 25
+      },
+      "train_hours": 1.6637,
+      "last_train_loss": 0.4724840240971687,
+      "last_val_macro_f1": 0.7206519627632104,
+      "complete": true,
+      "slices": {
+        "duration_le_10s": {
+          "num_samples": 651,
+          "macro_f1": 0.7442783860261998,
+          "present_class_macro_f1": 0.7442783860261998,
+          "accuracy": 0.8064516129032258
+        },
+        "duration_gt_10s": {
+          "num_samples": 172,
+          "macro_f1": 0.5376921928646067,
+          "present_class_macro_f1": 0.7527690700104493,
+          "accuracy": 0.813953488372093
+        },
+        "source_collection": {
+          "FSN": {
+            "num_samples": 166,
+            "macro_f1": 0.5752102145936274,
+            "present_class_macro_f1": 0.5752102145936274,
+            "accuracy": 0.7530120481927711
+          },
+          "bilibili": {
+            "num_samples": 37,
+            "macro_f1": 0.49469947130045655,
+            "present_class_macro_f1": 0.6925792598206392,
+            "accuracy": 0.6486486486486487
+          },
+          "dy": {
+            "num_samples": 263,
+            "macro_f1": 0.6975156399983388,
+            "present_class_macro_f1": 0.8137682466647286,
+            "accuracy": 0.844106463878327
+          },
+          "ks": {
+            "num_samples": 34,
+            "macro_f1": 0.4813440527726242,
+            "present_class_macro_f1": 0.8423520923520924,
+            "accuracy": 0.8823529411764706
+          },
+          "lishui": {
+            "num_samples": 209,
+            "macro_f1": 0.7591557597268952,
+            "present_class_macro_f1": 0.7591557597268952,
+            "accuracy": 0.8277511961722488
+          },
+          "menzhen": {
+            "num_samples": 89,
+            "macro_f1": 0.7598770277341707,
+            "present_class_macro_f1": 0.7598770277341707,
+            "accuracy": 0.7752808988764045
+          },
+          "youtube": {
+            "num_samples": 25,
+            "macro_f1": 0.5142857142857142,
+            "present_class_macro_f1": 0.72,
+            "accuracy": 0.88
+          }
+        }
+      }
+    },
+    {
+      "variant": "original",
+      "seed": 2026,
+      "best_epoch": "finetune_39",
+      "metrics": {
+        "macro_f1": 0.7898785506631896,
+        "accuracy": 0.8226002430133658,
+        "micro_f1": 0.8226002430133658,
+        "weighted_f1": 0.8186846242973111,
+        "num_samples": 823,
+        "per_class": [
+          {
+            "class_id": 0,
+            "class_name": "消毒",
+            "precision": 0.7714285714285715,
+            "recall": 0.675,
+            "f1": 0.72,
+            "support": 40
+          },
+          {
+            "class_id": 1,
+            "class_name": "进针",
+            "precision": 0.8916666666666667,
+            "recall": 0.8991596638655462,
+            "f1": 0.895397489539749,
+            "support": 119
+          },
+          {
+            "class_id": 2,
+            "class_name": "运针",
+            "precision": 0.9318181818181818,
+            "recall": 0.8145695364238411,
+            "f1": 0.8692579505300353,
+            "support": 151
+          },
+          {
+            "class_id": 3,
+            "class_name": "扫散",
+            "precision": 0.8069767441860465,
+            "recall": 0.896640826873385,
+            "f1": 0.8494492044063647,
+            "support": 387
+          },
+          {
+            "class_id": 4,
+            "class_name": "再灌注",
+            "precision": 0.5357142857142857,
+            "recall": 0.4166666666666667,
+            "f1": 0.46875000000000006,
+            "support": 72
+          },
+          {
+            "class_id": 5,
+            "class_name": "拔针",
+            "precision": 0.8444444444444444,
+            "recall": 0.7916666666666666,
+            "f1": 0.8172043010752689,
+            "support": 48
+          },
+          {
+            "class_id": 6,
+            "class_name": "固定",
+            "precision": 1,
+            "recall": 0.8333333333333334,
+            "f1": 0.9090909090909091,
+            "support": 6
+          }
+        ],
+        "confusion_matrix": [
+          [
+            27,
+            1,
+            1,
+            7,
+            0,
+            4,
+            0
+          ],
+          [
+            0,
+            107,
+            1,
+            9,
+            0,
+            2,
+            0
+          ],
+          [
+            1,
+            4,
+            123,
+            21,
+            2,
+            0,
+            0
+          ],
+          [
+            5,
+            5,
+            5,
+            347,
+            24,
+            1,
+            0
+          ],
+          [
+            0,
+            1,
+            0,
+            41,
+            30,
+            0,
+            0
+          ],
+          [
+            2,
+            2,
+            2,
+            4,
+            0,
+            38,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            5
+          ]
+        ],
+        "sweep_to_reperfusion": 24,
+        "reperfusion_to_sweep": 41
+      },
+      "complete": false,
+      "status": "interrupted_best_checkpoint_reinferred",
+      "slices": {
+        "duration_le_10s": {
+          "num_samples": 651,
+          "macro_f1": 0.796130099133587,
+          "present_class_macro_f1": 0.796130099133587,
+          "accuracy": 0.82642089093702
+        },
+        "duration_gt_10s": {
+          "num_samples": 172,
+          "macro_f1": 0.5109610577859106,
+          "present_class_macro_f1": 0.7153454809002749,
+          "accuracy": 0.8081395348837209
+        },
+        "source_collection": {
+          "FSN": {
+            "num_samples": 166,
+            "macro_f1": 0.6270360266452321,
+            "present_class_macro_f1": 0.6270360266452321,
+            "accuracy": 0.7349397590361446
+          },
+          "bilibili": {
+            "num_samples": 37,
+            "macro_f1": 0.5289589637415724,
+            "present_class_macro_f1": 0.7405425492382014,
+            "accuracy": 0.7027027027027027
+          },
+          "dy": {
+            "num_samples": 263,
+            "macro_f1": 0.6923431121352775,
+            "present_class_macro_f1": 0.8077336308244906,
+            "accuracy": 0.8593155893536122
+          },
+          "ks": {
+            "num_samples": 34,
+            "macro_f1": 0.44389844389844396,
+            "present_class_macro_f1": 0.7768222768222769,
+            "accuracy": 0.8529411764705882
+          },
+          "lishui": {
+            "num_samples": 209,
+            "macro_f1": 0.773805978330486,
+            "present_class_macro_f1": 0.773805978330486,
+            "accuracy": 0.84688995215311
+          },
+          "menzhen": {
+            "num_samples": 89,
+            "macro_f1": 0.8410369437766698,
+            "present_class_macro_f1": 0.8410369437766698,
+            "accuracy": 0.8426966292134831
+          },
+          "youtube": {
+            "num_samples": 25,
+            "macro_f1": 0.6392363396971692,
+            "present_class_macro_f1": 0.8949308755760368,
+            "accuracy": 0.88
+          }
+        }
+      }
+    }
+  ],
+  "paired_macro_f1": [
+    {
+      "seed": 42,
+      "original_macro_f1": 0.7637841231068652,
+      "directional_macro_f1": 0.7688641952982432,
+      "delta_macro_f1": 0.005080072191378071
+    },
+    {
+      "seed": 2026,
+      "original_macro_f1": 0.7898785506631896,
+      "directional_macro_f1": 0.7568325182120542,
+      "delta_macro_f1": -0.033046032451135354
+    },
+    {
+      "seed": 1217,
+      "original_macro_f1": 0.7524325924779279,
+      "directional_macro_f1": 0.7870719697916737,
+      "delta_macro_f1": 0.03463937731374578
+    }
+  ],
+  "mean_metrics": {
+    "original": {
+      "macro_f1": 0.7686984220826609,
+      "accuracy": 0.818955042527339,
+      "micro_f1": 0.818955042527339,
+      "weighted_f1": 0.8157020523651176
+    },
+    "directional_evidence": {
+      "macro_f1": 0.7709228944339904,
+      "accuracy": 0.8128797083839611,
+      "micro_f1": 0.8128797083839611,
+      "weighted_f1": 0.8128296444250817
+    }
+  },
+  "paired_delta_macro_f1": {
+    "mean": 0.0022244723513294984,
+    "sample_sd": 0.03393294139320714
+  },
+  "per_class_f1_means": [
+    {
+      "class_id": 0,
+      "class_name": "消毒",
+      "support": 40,
+      "original_f1_mean": 0.753477366255144,
+      "directional_f1_mean": 0.7515974621237781
+    },
+    {
+      "class_id": 1,
+      "class_name": "进针",
+      "support": 119,
+      "original_f1_mean": 0.8866485040462063,
+      "directional_f1_mean": 0.8915946019093189
+    },
+    {
+      "class_id": 2,
+      "class_name": "运针",
+      "support": 151,
+      "original_f1_mean": 0.8403375691336904,
+      "directional_f1_mean": 0.8311438411644314
+    },
+    {
+      "class_id": 3,
+      "class_name": "扫散",
+      "support": 387,
+      "original_f1_mean": 0.8524668459405428,
+      "directional_f1_mean": 0.8436741912692173
+    },
+    {
+      "class_id": 4,
+      "class_name": "再灌注",
+      "support": 72,
+      "original_f1_mean": 0.4987001424501425,
+      "directional_f1_mean": 0.5315291219749817
+    },
+    {
+      "class_id": 5,
+      "class_name": "拔针",
+      "support": 48,
+      "original_f1_mean": 0.8017837792781529,
+      "directional_f1_mean": 0.7914020517830972
+    },
+    {
+      "class_id": 6,
+      "class_name": "固定",
+      "support": 6,
+      "original_f1_mean": 0.7474747474747474,
+      "directional_f1_mean": 0.7555189908131085
+    }
+  ],
+  "directional_error_totals": {
+    "sweep_to_reperfusion": {
+      "original": 73,
+      "directional_evidence": 94,
+      "true_sweep_support": 1161
+    },
+    "reperfusion_to_sweep": {
+      "original": 113,
+      "directional_evidence": 93,
+      "true_reperfusion_support": 216
+    }
+  },
+  "duration_slices": [
+    {
+      "group": "duration_le_10s",
+      "clips": 651,
+      "original_macro_f1_mean": 0.7588950315296222,
+      "directional_macro_f1_mean": 0.7695520092542608
+    },
+    {
+      "group": "duration_gt_10s",
+      "clips": 172,
+      "original_macro_f1_mean": 0.527108422275136,
+      "directional_macro_f1_mean": 0.5330995194209739
+    }
+  ],
+  "source_slices": [
+    {
+      "source": "FSN",
+      "clips": 166,
+      "original_macro_f1_mean": 0.6485655505141823,
+      "directional_macro_f1_mean": 0.6618323080780746
+    },
+    {
+      "source": "bilibili",
+      "clips": 37,
+      "original_macro_f1_mean": 0.5227096238126437,
+      "directional_macro_f1_mean": 0.5310550625664497
+    },
+    {
+      "source": "dy",
+      "clips": 263,
+      "original_macro_f1_mean": 0.6942235910523072,
+      "directional_macro_f1_mean": 0.7050533335337619
+    },
+    {
+      "source": "ks",
+      "clips": 34,
+      "original_macro_f1_mean": 0.47857495714638576,
+      "directional_macro_f1_mean": 0.4827988689333227
+    },
+    {
+      "source": "lishui",
+      "clips": 209,
+      "original_macro_f1_mean": 0.7627994779928718,
+      "directional_macro_f1_mean": 0.7857102380868225
+    },
+    {
+      "source": "menzhen",
+      "clips": 89,
+      "original_macro_f1_mean": 0.8043786828129332,
+      "directional_macro_f1_mean": 0.8027917130974783
+    },
+    {
+      "source": "youtube",
+      "clips": 25,
+      "original_macro_f1_mean": 0.5581526715246722,
+      "directional_macro_f1_mean": 0.5837985769020251
+    }
+  ],
+  "slice_warning": "Some source and duration slices omit classes; their seven-class macro-F1 is descriptive and not directly comparable to overall macro-F1.",
+  "branch_audit": {
+    "note": "All three audit checkpoint SHA-256 values were verified against final best.pt after training.",
+    "per_seed": [
+      {
+        "seed": 42,
+        "checkpoint_epoch": 27,
+        "validation_clips": 823,
+        "branch_on_macro_f1": 0.7688641952982432,
+        "trained_main_path_macro_f1": 0.7695625568986745,
+        "changed_predictions": 1,
+        "corrected_by_branch": 0,
+        "harmed_by_branch": 1,
+        "mean_abs_pair_correction_logit": 0.0032297563611835907,
+        "mean_abs_pair_main_logit": 7.958535844471446,
+        "mean_effective_gate": 0.08703143969606801,
+        "branch_off_sweep_to_reperfusion": 41,
+        "branch_on_sweep_to_reperfusion": 42,
+        "branch_off_reperfusion_to_sweep": 25,
+        "branch_on_reperfusion_to_sweep": 25
+      },
+      {
+        "seed": 2026,
+        "checkpoint_epoch": 18,
+        "validation_clips": 823,
+        "branch_on_macro_f1": 0.7568325182120542,
+        "trained_main_path_macro_f1": 0.7567484582942298,
+        "changed_predictions": 3,
+        "corrected_by_branch": 1,
+        "harmed_by_branch": 2,
+        "mean_abs_pair_correction_logit": 0.004636389762884569,
+        "mean_abs_pair_main_logit": 5.344752667451397,
+        "mean_effective_gate": 0.14280420771199093,
+        "branch_off_sweep_to_reperfusion": 26,
+        "branch_on_sweep_to_reperfusion": 28,
+        "branch_off_reperfusion_to_sweep": 31,
+        "branch_on_reperfusion_to_sweep": 30
+      },
+      {
+        "seed": 1217,
+        "checkpoint_epoch": 45,
+        "validation_clips": 823,
+        "branch_on_macro_f1": 0.7870719697916737,
+        "trained_main_path_macro_f1": 0.7870719697916737,
+        "changed_predictions": 0,
+        "corrected_by_branch": 0,
+        "harmed_by_branch": 0,
+        "mean_abs_pair_correction_logit": 0.0013976421197536967,
+        "mean_abs_pair_main_logit": 10.842062670868772,
+        "mean_effective_gate": 0.05235210357904001,
+        "branch_off_sweep_to_reperfusion": 24,
+        "branch_on_sweep_to_reperfusion": 24,
+        "branch_off_reperfusion_to_sweep": 38,
+        "branch_on_reperfusion_to_sweep": 38
+      }
+    ],
+    "total_changed_predictions": 4,
+    "total_corrected": 1,
+    "total_harmed": 3,
+    "total_predictions": 2469
+  },
+  "privacy_exclusions": [
+    "video and decoded frames",
+    "raw annotations and manifests with source paths",
+    "clip-level predictions",
+    "raw logs",
+    "model checkpoints and caches"
+  ]
+}
