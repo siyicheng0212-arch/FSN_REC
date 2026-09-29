@@ -23,6 +23,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from experiments.full_data import FullClipDataset
+from experiments.clip_evidence import FSNClipEvidence
 from experiments.metrics import compute_classification_metrics
 from experiments.model_wrappers import (
     AdaFocusFSN,
@@ -86,7 +87,7 @@ def metadata_rows(batch: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 @torch.no_grad()
-def evaluate(model: AdaFocusFSN, loader: DataLoader, device: torch.device) -> tuple[dict, list[dict], float]:
+def evaluate(model: AdaFocusFSN | FSNClipEvidence, loader: DataLoader, device: torch.device) -> tuple[dict, list[dict], float]:
     model.eval()
     logits_all, targets_all, metadata_all, prediction_rows = [], [], [], []
     started = time.perf_counter()
@@ -114,7 +115,7 @@ def evaluate(model: AdaFocusFSN, loader: DataLoader, device: torch.device) -> tu
     return metrics, prediction_rows, time.perf_counter() - started
 
 
-def make_model(args: argparse.Namespace, device: torch.device) -> tuple[AdaFocusFSN, dict]:
+def make_model(args: argparse.Namespace, device: torch.device) -> tuple[AdaFocusFSN | FSNClipEvidence, dict]:
     common = dict(
         num_classes=7,
         device=device,
@@ -132,6 +133,15 @@ def make_model(args: argparse.Namespace, device: torch.device) -> tuple[AdaFocus
         checkpoint_report = {"checkpoint": None, "warning": "random initialization"}
     else:
         raise RuntimeError("--checkpoint is required for formal training")
+    if args.variant == "iea":
+        evidence = FSNClipEvidence(baseline)
+        return evidence.to(device), {
+            "official_checkpoint": checkpoint_report,
+            "evidence_module_parameters": sum(
+                parameter.numel() for parameter in evidence.evidence_module.parameters()
+            ),
+            "initial_correction_zero": True,
+        }
     baseline_state = {key: value.detach().cpu().clone() for key, value in baseline.state_dict().items()}
     if args.variant == "original":
         return baseline.to(device), checkpoint_report
@@ -155,11 +165,18 @@ def write_jsonl(path: Path, rows: list[dict]) -> None:
 
 
 def make_optimizer(
-    model: AdaFocusFSN,
+    model: AdaFocusFSN | FSNClipEvidence,
     args: argparse.Namespace,
 ) -> tuple[torch.optim.Optimizer, list[dict[str, Any]]]:
     """Build the official Uni-AdaFocus learning-rate parameter groups."""
-    policies = model.core.get_optim_policies(args)
+    policies = list(model.core.get_optim_policies(args))
+    if isinstance(model, FSNClipEvidence):
+        policies.append({
+            "params": model.evidence_module.parameters(),
+            "lr_mult": args.fsn_module_lr_ratio,
+            "decay_mult": 1,
+            "name": "iea_evidence_module",
+        })
     parameter_groups: list[dict[str, Any]] = []
     summary: list[dict[str, Any]] = []
     seen: set[int] = set()
@@ -221,7 +238,7 @@ def make_class_weights(
 
 
 def train_epoch(
-    model: AdaFocusFSN,
+    model: AdaFocusFSN | FSNClipEvidence,
     loader: DataLoader,
     optimizer: torch.optim.Optimizer,
     device: torch.device,
@@ -263,6 +280,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if not torch.cuda.is_available():
         raise RuntimeError("formal training requires CUDA")
     device = torch.device("cuda:0")
+    if args.variant == "iea" and args.sampling != "uniform":
+        raise ValueError("IEA pilot must use the frozen 36-frame uniform sampler")
     seed_all(args.seed)
     include_test = args.test_after_training
     split_audit = validate_splits(args.manifest_dir, include_test=include_test)
@@ -434,7 +453,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--variant", choices=("original", "fsn"), required=True)
+    parser.add_argument("--variant", choices=("original", "fsn", "iea"), required=True)
     parser.add_argument("--manifest-dir", type=Path, default=Path("processed_server/manifests"))
     parser.add_argument("--cache-dir", type=Path, default=Path("full_cache_36f224"))
     parser.add_argument("--sampling", choices=("uniform", "three_windows"), default="uniform")
