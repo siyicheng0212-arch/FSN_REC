@@ -62,7 +62,7 @@ The source corpus includes edited online videos. This experiment makes no claim
 about continuous clinical workflow, direct blood reperfusion measurement,
 or detection of clinician and patient roles.
 
-## Fixed within-clip dual-rate fusion diagnostic
+## Controlled within-clip fusion diagnostic
 
 Using each arm's independently trained best checkpoint for the same seed, we
 also averaged their seven-class softmax probabilities at equal weight. This
@@ -70,28 +70,43 @@ uses **only the current clip** and does not fit fusion weights. It is a
 diagnostic ensemble of two complete models, not a trained new architecture;
 its inference cost is correspondingly higher.
 
-| Seed | Uniform visual F1 | Dense visual F1 | Fixed fusion visual F1 |
-|---:|---:|---:|---:|
-| 42 | 0.76378 | 0.75817 | 0.76796 |
-| 123 | 0.78528 | 0.75304 | 0.79490 |
-| 2026 | 0.78988 | 0.77739 | 0.79384 |
-| Mean | **0.77965** | 0.76287 | **0.78557** |
+| Seed | Uniform | Dense | Uniform+dense | Uniform+uniform control |
+|---:|---:|---:|---:|---:|
+| 42 | 0.76378 | 0.75817 | 0.76796 | 0.78433 |
+| 123 | 0.78528 | 0.75304 | 0.79490 | 0.79124 |
+| 2026 | 0.78988 | 0.77739 | 0.79384 | 0.78985 |
+| Mean | **0.77965** | 0.76287 | 0.78557 | **0.78847** |
 
 The fixed fusion beats uniform alone by 0.00417, 0.00962, and 0.00396
 macro-F1 for the three paired seeds (mean +0.00592). Across three repetitions
 of the 823 validation clips, the dense model uniquely classifies 142 samples
 correctly when uniform is wrong, while uniform uniquely classifies 155 when
 dense is wrong. The fixed fusion corrects 70 uniform errors and harms 33
-uniform correct predictions. Thus there is genuine *complementarity*, but
-simple averaging captures only a small part of it.
+uniform correct predictions. **This does not establish that higher temporal
+sampling caused the complementarity.** A same-cost control averaging two
+different-seed uniform models reaches 0.78847, higher than uniform+dense
+at 0.78557. Cyclic control pairs are 42+123, 123+2026, and 2026+42;
+they do not perfectly match same-seed training stochasticity, so they are
+a diagnostic rather than a definitive causal estimate.
+
+For **393 of 823 clips (duration ≤3 s)**, the three-window sampling code
+uses exactly the same uniform timestamps. Any model disagreement there must
+arise from training differences, not additional dense-frame evidence.
+On the 430 clips longer than 3 s, uniform+dense mean seven-class macro-F1
+is 0.74067, below the two-uniform control's 0.75122. The same conclusion
+holds for the whole validation set; there is currently **no evidence that
+the fixed dense-window sampling contributes beyond ordinary ensembling**.
+The duration-slice macro-F1 values use the same seven classes in each method,
+but rare classes have small support in these slices.
 
 The clinically important error trade-off remains: sweeping incorrectly
 predicted as reperfusion falls from 75 to 59 across the three seeds, while
 reperfusion incorrectly predicted as sweeping rises from 105 to 112.
 Reperfusion F1 changes only from about 0.5188 to 0.5200. This diagnostic
 does **not** establish improved bidirectional distinction or clinician/patient
-activity recognition. It motivates a clip-level evidence study, not a claim
-that generic two-rate fusion is novel or sufficient. The full
-[aggregate-only diagnostic](fixed_dual_rate_fusion.json) records per-seed
-class, source, and duration metrics. No private clip predictions or videos
-are published.
+activity recognition. It does not justify a new dense-motion architecture
+by itself. The [controlled aggregate](fixed_dual_rate_fusion_controlled.json)
+contains overall and duration-slice comparisons; the earlier
+[uncontrolled diagnostic](fixed_dual_rate_fusion.json) is retained for audit,
+not as evidence of a dense-motion benefit. No private clip predictions or
+videos are published.
