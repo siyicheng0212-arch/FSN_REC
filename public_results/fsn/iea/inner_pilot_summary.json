@@ -1,0 +1,346 @@
+{
+  "schema_version": "fsn-iea-inner-pilot-summary-1.0",
+  "evaluation_role": "group-disjoint_validation_within_original_training_only",
+  "code_commit": "0ad5aa37be749bc6257ec922aa899df3015dea99",
+  "manifest_sha256": {
+    "train": "f0fc0ace561cd59c471c86d6ec674144de0d5ede6acf447a5a021787538ebf0a",
+    "val": "d6449196c3798a233a593db19da9045c92e02ba62bb6fa5a55d41bf118ee6580"
+  },
+  "seed": 42,
+  "head_warmup_epochs": 5,
+  "finetune_max_epochs": 10,
+  "test_metrics": null,
+  "models": {
+    "original": {
+      "best_epoch": "finetune_8",
+      "best_macro_f1": 0.8035462614444794,
+      "best_accuracy": 0.8256997455470738,
+      "best_weighted_f1": 0.8227448524434119,
+      "trainable_parameters": 27208867,
+      "per_class": [
+        {
+          "class_id": 0,
+          "class_name": "消毒",
+          "precision": 0.9130434782608695,
+          "recall": 0.7,
+          "f1": 0.7924528301886793,
+          "support": 30
+        },
+        {
+          "class_id": 1,
+          "class_name": "进针",
+          "precision": 0.9714285714285714,
+          "recall": 0.9272727272727272,
+          "f1": 0.9488372093023255,
+          "support": 110
+        },
+        {
+          "class_id": 2,
+          "class_name": "运针",
+          "precision": 0.896551724137931,
+          "recall": 0.8,
+          "f1": 0.8455284552845529,
+          "support": 130
+        },
+        {
+          "class_id": 3,
+          "class_name": "扫散",
+          "precision": 0.800498753117207,
+          "recall": 0.8991596638655462,
+          "f1": 0.8469656992084433,
+          "support": 357
+        },
+        {
+          "class_id": 4,
+          "class_name": "再灌注",
+          "precision": 0.6483516483516484,
+          "recall": 0.5412844036697247,
+          "f1": 0.59,
+          "support": 109
+        },
+        {
+          "class_id": 5,
+          "class_name": "拔针",
+          "precision": 0.8536585365853658,
+          "recall": 0.875,
+          "f1": 0.8641975308641976,
+          "support": 40
+        },
+        {
+          "class_id": 6,
+          "class_name": "固定",
+          "precision": 0.7777777777777778,
+          "recall": 0.7,
+          "f1": 0.7368421052631577,
+          "support": 10
+        }
+      ],
+      "sweep_to_reperfusion": 28,
+      "reperfusion_to_sweep": 49,
+      "train_minutes": 38.29074328613157,
+      "history": [
+        {
+          "phase": "head_warmup",
+          "epoch": 1,
+          "train_loss": 7.720258435965453,
+          "validation_macro_f1": 0.5747966377102246
+        },
+        {
+          "phase": "head_warmup",
+          "epoch": 2,
+          "train_loss": 6.749144013568234,
+          "validation_macro_f1": 0.5673785033527837
+        },
+        {
+          "phase": "head_warmup",
+          "epoch": 3,
+          "train_loss": 6.446529096922637,
+          "validation_macro_f1": 0.5748752529379818
+        },
+        {
+          "phase": "head_warmup",
+          "epoch": 4,
+          "train_loss": 6.328985123124476,
+          "validation_macro_f1": 0.5694068684881357
+        },
+        {
+          "phase": "head_warmup",
+          "epoch": 5,
+          "train_loss": 6.247597286869225,
+          "validation_macro_f1": 0.5487007419977136
+        },
+        {
+          "phase": "finetune",
+          "epoch": 1,
+          "train_loss": 6.171319727329843,
+          "validation_macro_f1": 0.6407338941920323
+        },
+        {
+          "phase": "finetune",
+          "epoch": 2,
+          "train_loss": 4.820306401550408,
+          "validation_macro_f1": 0.6983645889561859
+        },
+        {
+          "phase": "finetune",
+          "epoch": 3,
+          "train_loss": 4.150156322943628,
+          "validation_macro_f1": 0.7634606143159895
+        },
+        {
+          "phase": "finetune",
+          "epoch": 4,
+          "train_loss": 3.4212548789248,
+          "validation_macro_f1": 0.7635289484541007
+        },
+        {
+          "phase": "finetune",
+          "epoch": 5,
+          "train_loss": 2.9486091984503813,
+          "validation_macro_f1": 0.7650204156940645
+        },
+        {
+          "phase": "finetune",
+          "epoch": 6,
+          "train_loss": 2.4309929860359736,
+          "validation_macro_f1": 0.7761614943443647
+        },
+        {
+          "phase": "finetune",
+          "epoch": 7,
+          "train_loss": 2.0937721394687068,
+          "validation_macro_f1": 0.7862951853076191
+        },
+        {
+          "phase": "finetune",
+          "epoch": 8,
+          "train_loss": 1.7188307322767695,
+          "validation_macro_f1": 0.8035462614444794
+        },
+        {
+          "phase": "finetune",
+          "epoch": 9,
+          "train_loss": 1.5226481220746335,
+          "validation_macro_f1": 0.7990223570172642
+        },
+        {
+          "phase": "finetune",
+          "epoch": 10,
+          "train_loss": 1.370205459439559,
+          "validation_macro_f1": 0.7897847335517973
+        }
+      ]
+    },
+    "iea": {
+      "best_epoch": "finetune_5",
+      "best_macro_f1": 0.7992994597622364,
+      "best_accuracy": 0.8002544529262087,
+      "best_weighted_f1": 0.8013197505644555,
+      "trainable_parameters": 27224418,
+      "per_class": [
+        {
+          "class_id": 0,
+          "class_name": "消毒",
+          "precision": 0.8461538461538461,
+          "recall": 0.7333333333333333,
+          "f1": 0.7857142857142856,
+          "support": 30
+        },
+        {
+          "class_id": 1,
+          "class_name": "进针",
+          "precision": 0.9514563106796117,
+          "recall": 0.8909090909090909,
+          "f1": 0.9201877934272301,
+          "support": 110
+        },
+        {
+          "class_id": 2,
+          "class_name": "运针",
+          "precision": 0.7692307692307693,
+          "recall": 0.8461538461538461,
+          "f1": 0.8058608058608059,
+          "support": 130
+        },
+        {
+          "class_id": 3,
+          "class_name": "扫散",
+          "precision": 0.8099173553719008,
+          "recall": 0.8235294117647058,
+          "f1": 0.8166666666666667,
+          "support": 357
+        },
+        {
+          "class_id": 4,
+          "class_name": "再灌注",
+          "precision": 0.5945945945945946,
+          "recall": 0.6055045871559633,
+          "f1": 0.6,
+          "support": 109
+        },
+        {
+          "class_id": 5,
+          "class_name": "拔针",
+          "precision": 1.0,
+          "recall": 0.8,
+          "f1": 0.888888888888889,
+          "support": 40
+        },
+        {
+          "class_id": 6,
+          "class_name": "固定",
+          "precision": 0.875,
+          "recall": 0.7,
+          "f1": 0.7777777777777777,
+          "support": 10
+        }
+      ],
+      "sweep_to_reperfusion": 41,
+      "reperfusion_to_sweep": 43,
+      "train_minutes": 40.35382834514603,
+      "history": [
+        {
+          "phase": "head_warmup",
+          "epoch": 1,
+          "train_loss": 7.720282771462803,
+          "validation_macro_f1": 0.5747966377102246
+        },
+        {
+          "phase": "head_warmup",
+          "epoch": 2,
+          "train_loss": 6.749224383515257,
+          "validation_macro_f1": 0.566719086464642
+        },
+        {
+          "phase": "head_warmup",
+          "epoch": 3,
+          "train_loss": 6.446553606381538,
+          "validation_macro_f1": 0.5735288476902609
+        },
+        {
+          "phase": "head_warmup",
+          "epoch": 4,
+          "train_loss": 6.329023677480032,
+          "validation_macro_f1": 0.5715173067111994
+        },
+        {
+          "phase": "head_warmup",
+          "epoch": 5,
+          "train_loss": 6.247521024210919,
+          "validation_macro_f1": 0.5470367315154177
+        },
+        {
+          "phase": "finetune",
+          "epoch": 1,
+          "train_loss": 6.147279522615968,
+          "validation_macro_f1": 0.6636073947070928
+        },
+        {
+          "phase": "finetune",
+          "epoch": 2,
+          "train_loss": 4.694012516831135,
+          "validation_macro_f1": 0.6918795192312425
+        },
+        {
+          "phase": "finetune",
+          "epoch": 3,
+          "train_loss": 4.131895498219846,
+          "validation_macro_f1": 0.7402971125189557
+        },
+        {
+          "phase": "finetune",
+          "epoch": 4,
+          "train_loss": 3.4029969053336147,
+          "validation_macro_f1": 0.7807452651910823
+        },
+        {
+          "phase": "finetune",
+          "epoch": 5,
+          "train_loss": 2.9106603036063157,
+          "validation_macro_f1": 0.7992994597622364
+        },
+        {
+          "phase": "finetune",
+          "epoch": 6,
+          "train_loss": 2.424247999354192,
+          "validation_macro_f1": 0.7603882451461359
+        },
+        {
+          "phase": "finetune",
+          "epoch": 7,
+          "train_loss": 2.053459996618398,
+          "validation_macro_f1": 0.7740360953018828
+        },
+        {
+          "phase": "finetune",
+          "epoch": 8,
+          "train_loss": 1.6916688993434,
+          "validation_macro_f1": 0.7742581755872262
+        },
+        {
+          "phase": "finetune",
+          "epoch": 9,
+          "train_loss": 1.5047075721134804,
+          "validation_macro_f1": 0.7884248016106762
+        },
+        {
+          "phase": "finetune",
+          "epoch": 10,
+          "train_loss": 1.348884998437669,
+          "validation_macro_f1": 0.7841798151330229
+        }
+      ]
+    }
+  },
+  "iea_direct_residual_audit": {
+    "validation_clips": 786,
+    "mean_abs_residual_logit": 0.007670556798188665,
+    "mean_abs_baseline_logit": 4.3095079220584935,
+    "prediction_changes": 1,
+    "corrected": 0,
+    "harmed": 1,
+    "mean_motion_quality": 0.812795349356479,
+    "zero_motion_quality_clips": 19
+  },
+  "interpretation": "No demonstrated IEA benefit in this one-seed internal pilot; almost no final prediction changes come from the new residual. Do not promote to formal multi-seed training or claim clinical-role recognition."
+}
