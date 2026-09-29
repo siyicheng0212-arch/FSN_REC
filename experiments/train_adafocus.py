@@ -20,10 +20,12 @@ from typing import Any
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
 from experiments.full_data import FullClipDataset
 from experiments.clip_evidence import FSNClipEvidence
+from experiments.directional_evidence import FSNDirectionalEvidence
 from experiments.metrics import compute_classification_metrics
 from experiments.model_wrappers import (
     AdaFocusFSN,
@@ -87,7 +89,7 @@ def metadata_rows(batch: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 @torch.no_grad()
-def evaluate(model: AdaFocusFSN | FSNClipEvidence, loader: DataLoader, device: torch.device) -> tuple[dict, list[dict], float]:
+def evaluate(model: AdaFocusFSN | FSNClipEvidence | FSNDirectionalEvidence, loader: DataLoader, device: torch.device) -> tuple[dict, list[dict], float]:
     model.eval()
     logits_all, targets_all, metadata_all, prediction_rows = [], [], [], []
     started = time.perf_counter()
@@ -115,7 +117,7 @@ def evaluate(model: AdaFocusFSN | FSNClipEvidence, loader: DataLoader, device: t
     return metrics, prediction_rows, time.perf_counter() - started
 
 
-def make_model(args: argparse.Namespace, device: torch.device) -> tuple[AdaFocusFSN | FSNClipEvidence, dict]:
+def make_model(args: argparse.Namespace, device: torch.device) -> tuple[AdaFocusFSN | FSNClipEvidence | FSNDirectionalEvidence, dict]:
     common = dict(
         num_classes=7,
         device=device,
@@ -133,14 +135,22 @@ def make_model(args: argparse.Namespace, device: torch.device) -> tuple[AdaFocus
         checkpoint_report = {"checkpoint": None, "warning": "random initialization"}
     else:
         raise RuntimeError("--checkpoint is required for formal training")
-    if args.variant == "iea":
+    if args.variant in ("iea", "directional_evidence"):
         # Preserve the baseline's post-initialization RNG state so a paired
         # Original/IEA run with the same seed sees the same policy sampling
         # and augmentation stream. Initializing the extra module must not
         # silently change the comparison's randomness.
         cpu_rng = torch.get_rng_state()
         cuda_rng = torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
-        evidence = FSNClipEvidence(baseline)
+        evidence = (
+            FSNClipEvidence(baseline)
+            if args.variant == "iea" else FSNDirectionalEvidence(
+                baseline,
+                relation_mode=getattr(args, "evidence_relation_mode", "directed"),
+                quality_gate=not getattr(args, "disable_evidence_quality_gate", False),
+                ambiguity_gate=not getattr(args, "disable_evidence_ambiguity_gate", False),
+            )
+        )
         torch.set_rng_state(cpu_rng)
         if cuda_rng is not None:
             torch.cuda.set_rng_state_all(cuda_rng)
@@ -150,6 +160,9 @@ def make_model(args: argparse.Namespace, device: torch.device) -> tuple[AdaFocus
                 parameter.numel() for parameter in evidence.evidence_module.parameters()
             ),
             "initial_correction_zero": True,
+            "activity_stream_semantics": (
+                "latent_unverified" if args.variant == "directional_evidence" else None
+            ),
         }
     baseline_state = {key: value.detach().cpu().clone() for key, value in baseline.state_dict().items()}
     if args.variant == "original":
@@ -174,17 +187,20 @@ def write_jsonl(path: Path, rows: list[dict]) -> None:
 
 
 def make_optimizer(
-    model: AdaFocusFSN | FSNClipEvidence,
+    model: AdaFocusFSN | FSNClipEvidence | FSNDirectionalEvidence,
     args: argparse.Namespace,
 ) -> tuple[torch.optim.Optimizer, list[dict[str, Any]]]:
     """Build the official Uni-AdaFocus learning-rate parameter groups."""
     policies = list(model.core.get_optim_policies(args))
-    if isinstance(model, FSNClipEvidence):
+    if isinstance(model, (FSNClipEvidence, FSNDirectionalEvidence)):
         policies.append({
             "params": model.evidence_module.parameters(),
             "lr_mult": args.fsn_module_lr_ratio,
             "decay_mult": 1,
-            "name": "iea_evidence_module",
+            "name": (
+                "iea_evidence_module" if isinstance(model, FSNClipEvidence)
+                else "directional_evidence_module"
+            ),
         })
     parameter_groups: list[dict[str, Any]] = []
     summary: list[dict[str, Any]] = []
@@ -247,7 +263,7 @@ def make_class_weights(
 
 
 def train_epoch(
-    model: AdaFocusFSN | FSNClipEvidence,
+    model: AdaFocusFSN | FSNClipEvidence | FSNDirectionalEvidence,
     loader: DataLoader,
     optimizer: torch.optim.Optimizer,
     device: torch.device,
@@ -255,6 +271,7 @@ def train_epoch(
     clip_grad: float,
     augmentation_generator: torch.Generator,
     phase: str,
+    pairwise_loss_weight: float = 0.0,
 ) -> tuple[float, float]:
     model.train()
     optimizer.zero_grad(set_to_none=True)
@@ -271,6 +288,14 @@ def train_epoch(
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
             output = model(video)
             native_loss = model.compute_loss(output, target)
+            # An optional, identical objective for both Original and the new
+            # candidate; never derive clinician/patient labels from class 3/4.
+            pair_mask = (target == 3) | (target == 4)
+            if pairwise_loss_weight and bool(pair_mask.any()):
+                pair_loss = F.cross_entropy(
+                    output["logits"][pair_mask, 3:5], target[pair_mask] - 3
+                )
+                native_loss = native_loss + pairwise_loss_weight * pair_loss
             loss = native_loss / group_size
         if not torch.isfinite(loss):
             raise RuntimeError(
@@ -289,8 +314,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if not torch.cuda.is_available():
         raise RuntimeError("formal training requires CUDA")
     device = torch.device("cuda:0")
-    if args.variant == "iea" and args.sampling != "uniform":
-        raise ValueError("IEA pilot must use the frozen 36-frame uniform sampler")
+    if args.variant in ("iea", "directional_evidence") and args.sampling != "uniform":
+        raise ValueError("evidence candidates require the frozen 36-frame uniform sampler")
+    if args.pairwise_loss_weight < 0:
+        raise ValueError("pairwise loss weight must be non-negative")
     seed_all(args.seed)
     include_test = args.test_after_training
     split_audit = validate_splits(args.manifest_dir, include_test=include_test)
@@ -336,6 +363,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     head_parameters = [
         parameter for name, parameter in model.named_parameters()
         if any(token in name for token in head_tokens)
+        or (args.variant == "directional_evidence" and name.startswith("evidence_module."))
     ]
     head_parameter_ids = {id(parameter) for parameter in head_parameters}
     if not head_parameters:
@@ -357,7 +385,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             train_loss, train_seconds = train_epoch(
                 model, loaders["train"], warmup_optimizer, device,
                 args.accumulation_steps, args.clip_grad,
-                augmentation_generator, "head_warmup",
+                augmentation_generator, "head_warmup", args.pairwise_loss_weight,
             )
             val_metrics, _, val_seconds = evaluate(model, loaders["val"], device)
             macro_f1 = val_metrics["all"]["macro_f1"]
@@ -394,7 +422,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         train_loss, train_seconds = train_epoch(
             model, loaders["train"], optimizer, device,
             args.accumulation_steps, args.clip_grad,
-            augmentation_generator, "finetune",
+            augmentation_generator, "finetune", args.pairwise_loss_weight,
         )
         scheduler.step()
         val_metrics, _, val_seconds = evaluate(model, loaders["val"], device)
@@ -462,7 +490,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--variant", choices=("original", "fsn", "iea"), required=True)
+    parser.add_argument("--variant", choices=("original", "fsn", "iea", "directional_evidence"), required=True)
     parser.add_argument("--manifest-dir", type=Path, default=Path("processed_server/manifests"))
     parser.add_argument("--cache-dir", type=Path, default=Path("full_cache_36f224"))
     parser.add_argument("--sampling", choices=("uniform", "three_windows"), default="uniform")
@@ -488,6 +516,12 @@ def parse_args() -> argparse.Namespace:
         default="sqrt_inverse",
     )
     parser.add_argument("--clip-grad", type=float, default=20.0)
+    parser.add_argument("--pairwise-loss-weight", type=float, default=0.0)
+    parser.add_argument(
+        "--evidence-relation-mode", choices=("directed", "unordered"), default="directed"
+    )
+    parser.add_argument("--disable-evidence-quality-gate", action="store_true")
+    parser.add_argument("--disable-evidence-ambiguity-gate", action="store_true")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--test-after-training", action="store_true")
     args = parser.parse_args()
