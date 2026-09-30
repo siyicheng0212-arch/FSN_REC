@@ -15,7 +15,11 @@ MODEL_ROOT = next(
 )
 sys.path.insert(0, str(MODEL_ROOT))
 
-from archs.fsn_modules import LocalContextInteraction, LocalTemporalAdapter  # noqa: E402
+from archs.fsn_modules import (  # noqa: E402
+    LocalContextInteraction,
+    LocalSpatiotemporalEvidence,
+    LocalTemporalAdapter,
+)
 
 
 class LocalTemporalAdapterTest(unittest.TestCase):
@@ -32,6 +36,43 @@ class LocalTemporalAdapterTest(unittest.TestCase):
         module = LocalTemporalAdapter(channels=16, bottleneck=4, temporal_kernel=1)
         output = module(torch.randn(6, 16, 3, 3), num_segments=3)
         self.assertEqual(tuple(output.shape), (6, 16, 3, 3))
+
+
+class LocalSpatiotemporalEvidenceTest(unittest.TestCase):
+    def test_exact_identity_at_initialization_and_projection_gradient(self):
+        torch.manual_seed(3)
+        features = torch.randn(12, 32, 5, 5, requires_grad=True)
+        module = LocalSpatiotemporalEvidence(
+            channels=32, bottleneck=8, mode="difference"
+        )
+        output = module(features, num_segments=6)
+        self.assertTrue(torch.equal(output, features))
+        output.square().mean().backward()
+        self.assertIsNotNone(module.up.weight.grad)
+        self.assertGreater(float(module.up.weight.grad.abs().sum()), 0)
+
+    def test_difference_and_equal_parameter_appearance_control(self):
+        torch.manual_seed(4)
+        source = torch.randn(6, 16, 4, 4)
+        difference = LocalSpatiotemporalEvidence(16, 4, "difference")
+        appearance = LocalSpatiotemporalEvidence(16, 4, "appearance")
+        appearance.load_state_dict(difference.state_dict())
+        self.assertEqual(
+            sum(p.numel() for p in difference.parameters()),
+            sum(p.numel() for p in appearance.parameters()),
+        )
+        with torch.no_grad():
+            difference.up.weight.fill_(0.01)
+            appearance.up.weight.fill_(0.01)
+        a = difference(source, num_segments=6)
+        b = appearance(source, num_segments=6)
+        self.assertEqual(tuple(a.shape), tuple(source.shape))
+        self.assertGreater(float((a - b).abs().max()), 1e-7)
+
+    def test_bad_shape_rejected(self):
+        module = LocalSpatiotemporalEvidence(16, 4, "difference")
+        with self.assertRaises(ValueError):
+            module(torch.randn(5, 16, 4, 4), num_segments=3)
 
 
 class LocalContextInteractionTest(unittest.TestCase):

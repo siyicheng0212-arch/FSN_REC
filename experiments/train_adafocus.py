@@ -189,9 +189,23 @@ def make_model(args: argparse.Namespace, device: torch.device) -> tuple[AdaFocus
     baseline_state = {key: value.detach().cpu().clone() for key, value in baseline.state_dict().items()}
     if args.variant == "original":
         return baseline.to(device), checkpoint_report
+    cpu_rng = torch.get_rng_state()
+    cuda_rng = torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
     seed_all(args.seed)
-    modified = AdaFocusFSN(modified=True, **common)
+    evidence_mode = {
+        "local_difference": "difference",
+        "local_appearance": "appearance",
+    }.get(args.variant, "none")
+    modified = AdaFocusFSN(
+        modified=args.variant == "fsn",
+        local_evidence_mode=evidence_mode,
+        **common,
+    )
     shared_report = load_shared_adafocus_weights(modified, baseline_state)
+    if evidence_mode != "none":
+        torch.set_rng_state(cpu_rng)
+        if cuda_rng is not None:
+            torch.cuda.set_rng_state_all(cuda_rng)
     del baseline, baseline_state
     gc.collect()
     torch.cuda.empty_cache()
@@ -199,6 +213,7 @@ def make_model(args: argparse.Namespace, device: torch.device) -> tuple[AdaFocus
         "official_checkpoint": checkpoint_report,
         "shared_tensors_loaded": len(shared_report["loaded_keys"]),
         "new_module_tensors": len(shared_report["missing_keys"]),
+        "local_evidence_mode": evidence_mode,
     }
 
 
@@ -641,7 +656,12 @@ def run(args: argparse.Namespace, device_override: torch.device | None = None) -
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--variant", choices=("original", "fsn", "iea", "directional_evidence"), required=True)
+    parser.add_argument(
+        "--variant",
+        choices=("original", "fsn", "iea", "directional_evidence",
+                 "local_difference", "local_appearance"),
+        required=True,
+    )
     parser.add_argument("--manifest-dir", type=Path, default=Path("processed_server/manifests"))
     parser.add_argument("--cache-dir", type=Path, default=Path("full_cache_36f224"))
     parser.add_argument("--sampling", choices=("uniform", "three_windows"), default="uniform")

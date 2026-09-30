@@ -53,6 +53,74 @@ class LocalTemporalAdapter(nn.Module):
         return residual + self.alpha * self.up(features)
 
 
+class LocalSpatiotemporalEvidence(nn.Module):
+    """Opt-in layer-2 ResNet residual block for seven-class clip evidence.
+
+    ``difference`` processes signed one/two-step feature changes while
+    ``appearance`` is an equal-parameter control that supplies unchanged
+    features to the same convolutions. Neither stream represents a clinical
+    role or hard-codes a class pair. The final projection is exactly zero at
+    initialization, preserving every official pretrained tensor and logit.
+    """
+
+    def __init__(self, channels=512, bottleneck=64, mode="difference"):
+        super().__init__()
+        if mode not in {"difference", "appearance"}:
+            raise ValueError("mode must be difference or appearance")
+        self.mode = mode
+        self.norm = nn.GroupNorm(1, channels)
+        self.down = nn.Conv2d(channels, bottleneck, 1, bias=False)
+        self.spatial = nn.Conv3d(
+            bottleneck, bottleneck, (1, 3, 3), padding=(0, 1, 1),
+            groups=bottleneck, bias=False,
+        )
+        self.short = nn.Conv3d(
+            bottleneck, bottleneck, (3, 1, 1), padding=(1, 0, 0),
+            groups=bottleneck, bias=False,
+        )
+        self.long = nn.Conv3d(
+            bottleneck, bottleneck, (5, 1, 1), padding=(2, 0, 0),
+            groups=bottleneck, bias=False,
+        )
+        self.motion_gate = nn.Conv1d(2, 1, 1)
+        self.up = nn.Conv2d(bottleneck, channels, 1, bias=False)
+        nn.init.zeros_(self.up.weight)
+
+    def forward(self, features, num_segments):
+        if features.ndim != 4 or num_segments < 3:
+            raise ValueError("expected [B*T,C,H,W] and at least three frames")
+        bt, channels, height, width = features.shape
+        if bt % num_segments:
+            raise ValueError("flattened batch is not divisible by num_segments")
+        batch = bt // num_segments
+        hidden = self.down(self.norm(features)).reshape(
+            batch, num_segments, -1, height, width
+        ).permute(0, 2, 1, 3, 4).contiguous()
+        if self.mode == "difference":
+            short = torch.cat((
+                torch.zeros_like(hidden[:, :, :1]),
+                hidden[:, :, 1:] - hidden[:, :, :-1],
+            ), dim=2)
+            long = torch.cat((
+                torch.zeros_like(hidden[:, :, :2]),
+                hidden[:, :, 2:] - hidden[:, :, :-2],
+            ), dim=2)
+        else:
+            short = long = hidden
+        energy = torch.stack((
+            short.abs().mean(dim=(1, 3, 4)),
+            long.abs().mean(dim=(1, 3, 4)),
+        ), dim=1)
+        gate = torch.sigmoid(self.motion_gate(energy)).unsqueeze(-1).unsqueeze(-1)
+        evidence = F.silu(
+            self.spatial(hidden) + gate * (self.short(short) + self.long(long))
+        )
+        evidence = evidence.permute(0, 2, 1, 3, 4).reshape(
+            bt, -1, height, width
+        )
+        return features + self.up(evidence)
+
+
 class ContinuousTimeEncoding(nn.Module):
     """Encode normalized source-frame positions without assuming equal lengths."""
 
