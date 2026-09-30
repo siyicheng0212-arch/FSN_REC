@@ -46,6 +46,7 @@ def _adafocus_args(
     num_focus_segments: int,
     patch_size: int,
     mc_sample_times: int,
+    local_evidence_mode: str = "none",
 ) -> SimpleNamespace:
     return SimpleNamespace(
         num_glance_segments=num_glance_segments,
@@ -74,6 +75,7 @@ def _adafocus_args(
         stn_hidden_dim=128,
         temporal_hidden_dim=64,
         fsn_local_adapter="temporal" if modified else "none",
+        local_evidence_mode=local_evidence_mode,
         fsn_interaction="cross_attention" if modified else "none",
         fsn_interaction_weight=0.2,
         fsn_local_grid_size=3,
@@ -103,10 +105,17 @@ class AdaFocusFSN(FSNModel):
         num_focus_segments: int = 4,
         patch_size: int = 96,
         mc_sample_times: int = 4,
+        local_evidence_mode: str = "none",
     ) -> None:
         super().__init__()
+        if modified and local_evidence_mode != "none":
+            raise ValueError("FSN-v2 adapter and local evidence are separate ablations")
         device = device or torch.device("cpu")
-        self.model_name = "adafocus_fsn" if modified else "adafocus_original"
+        self.model_name = (
+            "adafocus_fsn" if modified else
+            "adafocus_local_evidence" if local_evidence_mode != "none" else
+            "adafocus_original"
+        )
         self.num_glance_segments = num_glance_segments
         self.num_input_focus_segments = num_input_focus_segments
         self.num_focus_segments = num_focus_segments
@@ -121,6 +130,7 @@ class AdaFocusFSN(FSNModel):
                 num_focus_segments,
                 patch_size,
                 mc_sample_times,
+                local_evidence_mode,
             ),
         )
 
@@ -213,6 +223,12 @@ def build_model(name: str, device: torch.device, num_classes: int = 7) -> FSNMod
         model = AdaFocusFSN(num_classes=num_classes, modified=False, device=device)
     elif name == "adafocus_fsn":
         model = AdaFocusFSN(num_classes=num_classes, modified=True, device=device)
+    elif name in ("adafocus_local_difference", "adafocus_local_appearance"):
+        mode = "difference" if name.endswith("difference") else "appearance"
+        model = AdaFocusFSN(
+            num_classes=num_classes, modified=False, device=device,
+            local_evidence_mode=mode,
+        )
     elif name == "mvit_v2_s_reference":
         model = MViTV2Reference(num_classes=num_classes)
     else:
