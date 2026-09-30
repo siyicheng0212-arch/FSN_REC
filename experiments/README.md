@@ -103,3 +103,78 @@ The aggregator fails closed if manifests or transition settings differ, or if
 any result contains independent-test metrics.  With three seeds it reports a
 Student-t interval as descriptive evidence and explicitly warns that the
 interval is unstable at this sample size.
+
+## FSN-v4 structured-decoder comparison and v3 ablations
+
+FSN-v4 is a **candidate**, not a validated replacement for v3.  It reuses
+exactly the same frozen original visual logits and train-only labels.  The
+first-order v3 decoder is compared with a second-order transition decoder
+(`P(y_t | y_{t-2}, y_{t-1})`) and a semi-Markov decoder that models same-class
+run lengths.  All use the predeclared weight `1.0` and Laplace smoothing
+`1.0`; there is no new visual backbone or additional visual training.
+
+First run `experiments.ablate_sequence_prior` on the three saved v3 prediction
+files and their matching result files.  It compares visual-only classification,
+uniform/start-only/transition-only/full first-order priors, two deterministic
+sequence-order shuffles, and per-record mean-logit pooling.  The order shuffles
+are negative controls; no validation label is used to fit a prior.  Then run
+`experiments.compare_structured_decoders` on the same files to compare v3
+bigram, trigram, and semi-Markov decoding.  Both commands require
+`--train-manifest`, `--validation-manifest`, three `--prediction SEED=PATH`
+arguments, three matching `--sequence-result SEED=PATH` arguments, and
+`--output`.  The structured comparison additionally accepts fixed `--weight`
+and `--smoothing`.  Input manifest hashes, seed IDs, labels, stored v3
+decisions, and `test_metrics: null` are checked before any result is written.
+
+Before designing another visual/transition module, run
+`experiments.audit_sequence_errors` with the same train/validation manifests,
+three `--prediction SEED=PATH` files, and three matching
+`--sequence-result SEED=PATH` files.  Set `--output-dir` to a **private path on
+the data server**.  The script verifies frozen inputs, reproduces v3 decisions,
+and writes `summary.json` plus `private_review_queue.jsonl` containing clip IDs,
+original media paths, timestamps, visual confidence, adjacent labels, and
+inter-clip gaps.  Review the selected source-video intervals manually before
+asserting a cause.  Never upload the queue, video frames, or annotations to
+GitHub.  In particular, a large gap between adjacent annotated clips is not
+evidence of an observed action boundary.
+
+These comparisons use the 823-clip **validation** split already examined for
+v3.  They are exploratory diagnostics, not independent-test results or an
+unbiased architecture-selection estimate.  A later definitive v4 claim would
+need a train-only internal selection protocol and untouched external test data.
+
+## Probability calibration and record-level uncertainty
+
+`experiments.audit_calibration` evaluates the same frozen FSN-v3 predictions
+without fitting any calibration parameter on validation.  Original visual
+probabilities come from softmax logits.  The sequence probabilities are
+computed with the forward-backward algorithm using the transition prior fitted
+from training labels.  Final sequence decisions remain Viterbi labels, so
+top-label calibration uses the marginal probability assigned to the selected
+Viterbi label.  NLL and multiclass Brier score evaluate the complete marginal
+distribution.
+
+The audit reports ten-bin expected calibration error, reliability bins,
+confidence, entropy, high-confidence mistakes, and selective error rates.
+It also resamples **source records**, preserving the dependence among clips
+from the same video.  Its percentile interval describes held-out-record
+variation conditional on the three fitted seeds.  It does not include new
+training-seed variation, external-site variation, or the effect of choosing
+checkpoints on this validation set.  See
+[Guo et al. (ICML 2017)](https://proceedings.mlr.press/v70/guo17a.html) for
+the calibration motivation and
+[Rabiner (1989)](https://www.cs.cmu.edu/~guestrin/Class/10701-S06/Handouts/Readings/hmms-rabiner.pdf)
+for forward-backward inference.
+
+```bash
+python -m experiments.audit_calibration \
+  --train-manifest /path/to/manifests_trainval/train.jsonl \
+  --validation-manifest /path/to/manifests_trainval/val.jsonl \
+  --prediction 42=/path/to/sequence_seed42/validation_predictions.jsonl \
+  --prediction 123=/path/to/sequence_seed123/validation_predictions.jsonl \
+  --prediction 2026=/path/to/sequence_seed2026/validation_predictions.jsonl \
+  --sequence-result 42=/path/to/sequence_seed42/result.json \
+  --sequence-result 123=/path/to/sequence_seed123/result.json \
+  --sequence-result 2026=/path/to/sequence_seed2026/result.json \
+  --output /path/to/probability_and_cluster_audit.json
+```

@@ -2,8 +2,8 @@
 
 ## Scope and protocol
 
-FSN-v3 keeps the official Uni-AdaFocus visual network unchanged and adds a
-procedure-aware decoder over clips from the same source record.  The decoder
+FSN-v3 keeps the official Uni-AdaFocus visual network unchanged and adds an
+empirical annotated-segment-order decoder over clips from the same source record. The decoder
 fits a Laplace-smoothed seven-state transition prior using **training labels
 only** and combines it with frozen visual log probabilities using Viterbi
 decoding.  The transition weight is fixed at `1.0`; singleton records retain
@@ -108,9 +108,13 @@ metrics.
 
 ## Interpretation and limitation
 
-The improvement comes from modeling the ordered FSN procedure, not from adding
-another visual attention block.  It applies when multiple annotated clips from
-the same record are available in chronological order.  Isolated clips are
-unchanged.  Deployment on unsegmented continuous video would additionally
-require a boundary proposal or temporal localization component, which is not
-evaluated here.
+The improvement comes from modeling the observed order of annotated clips in
+each media file, not from adding another visual attention block. This order
+must **not** be called a validated clinical treatment sequence: some online
+media are edited compilations, and the file's neighboring segments need not
+be neighboring clinical actions. The frozen-logit controls in
+`reports/FSN_V3_MECHANISM_AUDIT.md` show that directed adjacency, rather than
+only class frequency or generic same-class smoothing, accounts for most of the
+observed gain. Isolated clips are unchanged. Deployment on unsegmented
+continuous video would additionally require a boundary proposal or temporal
+localization component, which is not evaluated here.

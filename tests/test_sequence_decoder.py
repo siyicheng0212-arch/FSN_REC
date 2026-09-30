@@ -3,7 +3,11 @@ import unittest
 import torch
 
 from experiments.pilot_data import ClipRecord, EXPECTED_LABELS
-from experiments.sequence_decoder import decode_sequences, fit_transition_prior
+from experiments.sequence_decoder import (
+    decode_sequences,
+    fit_transition_prior,
+    sequence_marginal_probabilities,
+)
 
 
 def record(clip_id, record_id, start, label):
@@ -73,6 +77,42 @@ class SequenceDecoderTest(unittest.TestCase):
             decode_sequences(torch.zeros(2, 7), rows, prior)
         with self.assertRaisesRegex(ValueError, "non-negative"):
             decode_sequences(torch.zeros(1, 7), rows, prior, weight=-1)
+
+    def test_forward_backward_matches_brute_force_two_clip_marginals(self):
+        rows = [
+            record("clip-a", "video", 0, 0),
+            record("clip-b", "video", 1, 1),
+        ]
+        prior = fit_transition_prior(self.training_rows_for_probabilities())
+        logits = torch.tensor([
+            [0.3, 0.1, 0.0, -0.2, -0.5, -1.0, -1.2],
+            [0.1, 0.4, -0.1, -0.3, -0.4, -0.9, -1.1],
+        ])
+        actual = sequence_marginal_probabilities(logits, rows, prior)
+        emission = torch.softmax(logits.double(), dim=1)
+        joint = (
+            prior.initial_probability[:, None]
+            * emission[0, :, None]
+            * prior.transition_probability
+            * emission[1, None, :]
+        )
+        joint /= joint.sum()
+        expected = torch.stack((joint.sum(dim=1), joint.sum(dim=0)))
+        self.assertTrue(torch.allclose(actual, expected, atol=1e-10))
+
+    def training_rows_for_probabilities(self):
+        return [
+            record("clip-training-a", "training", 0, 0),
+            record("clip-training-b", "training", 1, 1),
+            record("clip-training-c", "training", 2, 1),
+        ]
+
+    def test_singleton_marginals_equal_visual_softmax(self):
+        rows = [record("clip-only", "one", 0, 6)]
+        logits = torch.tensor([[1.0, 0, 0, 0, 0, 0, 2.0]])
+        prior = fit_transition_prior(self.training_rows_for_probabilities())
+        actual = sequence_marginal_probabilities(logits, rows, prior)
+        self.assertTrue(torch.allclose(actual, torch.softmax(logits.double(), dim=1)))
 
 
 if __name__ == "__main__":

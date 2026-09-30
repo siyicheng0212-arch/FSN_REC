@@ -143,6 +143,54 @@ def decode_sequences(
     return prediction
 
 
+def sequence_marginal_probabilities(
+    logits: torch.Tensor,
+    records: Sequence[ClipRecord],
+    prior: TransitionPrior,
+    weight: float = 1.0,
+) -> torch.Tensor:
+    """Return per-clip probabilities under the first-order sequence model.
+
+    Viterbi yields the most likely *whole path*.  These forward-backward
+    marginals instead sum over every path and are appropriate for NLL, Brier,
+    and calibration diagnostics.  The final Viterbi labels are unchanged.
+    """
+    if weight < 0:
+        raise ValueError("transition weight must be non-negative")
+    logits = torch.as_tensor(logits).detach().cpu().double()
+    if logits.shape != (len(records), NUM_CLASSES):
+        raise ValueError(f"logits must have shape [{len(records)}, 7]")
+    if not torch.isfinite(logits).all():
+        raise ValueError("logits must be finite")
+    emission = torch.log_softmax(logits, dim=1)
+    log_initial = prior.initial_probability.log().double() * weight
+    log_transition = prior.transition_probability.log().double() * weight
+    probabilities = torch.empty_like(emission)
+    for indices in _ordered_groups(records):
+        index = torch.tensor(indices, dtype=torch.long)
+        local = emission[index]
+        if len(indices) == 1:
+            probabilities[index] = local.exp()
+            continue
+        forward = torch.empty_like(local)
+        backward = torch.empty_like(local)
+        forward[0] = local[0] + log_initial
+        for step in range(1, len(indices)):
+            forward[step] = local[step] + torch.logsumexp(
+                forward[step - 1, :, None] + log_transition, dim=0
+            )
+        backward[-1] = 0
+        for step in range(len(indices) - 2, -1, -1):
+            backward[step] = torch.logsumexp(
+                log_transition
+                + local[step + 1, None, :]
+                + backward[step + 1, None, :],
+                dim=1,
+            )
+        probabilities[index] = torch.softmax(forward + backward, dim=1)
+    return probabilities
+
+
 def predictions_to_logits(predictions: Iterable[int]) -> torch.Tensor:
     predictions = torch.as_tensor(list(predictions), dtype=torch.long)
     if predictions.ndim != 1 or ((predictions < 0) | (predictions >= NUM_CLASSES)).any():
@@ -157,4 +205,5 @@ __all__ = [
     "decode_sequences",
     "fit_transition_prior",
     "predictions_to_logits",
+    "sequence_marginal_probabilities",
 ]
