@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="940" height="560" viewBox="0 0 940 560">
+<rect width="940" height="560" fill="white"/>
+<text x="55" y="35" font-family="sans-serif" font-size="20">Semantic window head training curves</text>
+<text x="55" y="56" font-family="sans-serif" font-size="12">823-clip development validation; shared frozen Original-42 backbone</text>
+<text x="80" y="72" font-family="sans-serif" font-size="14">Development validation macro F1</text>
+<rect x="80" y="85" width="760" height="155" fill="none" stroke="#777"/>
+<line x1="80" y1="240.0" x2="840" y2="240.0" stroke="#eee"/>
+<text x="28" y="244.0" font-family="sans-serif" font-size="11">0.750</text>
+<line x1="80" y1="201.2" x2="840" y2="201.2" stroke="#eee"/>
+<text x="28" y="205.2" font-family="sans-serif" font-size="11">0.760</text>
+<line x1="80" y1="162.5" x2="840" y2="162.5" stroke="#eee"/>
+<text x="28" y="166.5" font-family="sans-serif" font-size="11">0.770</text>
+<line x1="80" y1="123.8" x2="840" y2="123.8" stroke="#eee"/>
+<text x="28" y="127.8" font-family="sans-serif" font-size="11">0.780</text>
+<line x1="80" y1="85.0" x2="840" y2="85.0" stroke="#eee"/>
+<text x="28" y="89.0" font-family="sans-serif" font-size="11">0.790</text>
+<polyline fill="none" stroke="#087e8b" stroke-width="2.5" points="80.0,182.6 127.5,185.3 175.0,177.7 222.5,174.3 270.0,205.3 317.5,214.7 365.0,214.7 412.5,223.9 460.0,223.9 507.5,233.3 555.0,246.1 602.5,246.1 650.0,246.1 697.5,248.9"/>
+<polyline fill="none" stroke="#5c6bc0" stroke-width="2.5" points="80.0,182.6 127.5,185.3 175.0,187.2 222.5,199.8 270.0,206.3 317.5,208.4 365.0,208.4 412.5,214.7 460.0,213.9 507.5,223.9 555.0,223.9"/>
+<polyline fill="none" stroke="#c75c18" stroke-width="2.5" points="80.0,182.6 127.5,185.3 175.0,184.4 222.5,202.1 270.0,199.8 317.5,208.7 365.0,211.8 412.5,211.6 460.0,220.8 507.5,223.2 555.0,226.3"/>
+<polyline fill="none" stroke="#2f7d32" stroke-width="2.5" points="80.0,178.6 127.5,171.1 175.0,173.9 222.5,171.0 270.0,177.0 317.5,171.0 365.0,139.8 412.5,174.2 460.0,139.8 507.5,146.2 555.0,161.4 602.5,164.5 650.0,164.5 697.5,161.4 745.0,158.4 792.5,158.6 840.0,158.4"/>
+<line x1="80" y1="186.6" x2="840" y2="186.6" stroke="#333" stroke-dasharray="5 4"/>
+<text x="80" y="259" font-family="sans-serif" font-size="11">1</text>
+<text x="817" y="259" font-family="sans-serif" font-size="11">17 epochs</text>
+<text x="80" y="297" font-family="sans-serif" font-size="14">Head training loss</text>
+<rect x="80" y="310" width="760" height="155" fill="none" stroke="#777"/>
+<line x1="80" y1="465.0" x2="840" y2="465.0" stroke="#eee"/>
+<text x="28" y="469.0" font-family="sans-serif" font-size="11">0.090</text>
+<line x1="80" y1="426.2" x2="840" y2="426.2" stroke="#eee"/>
+<text x="28" y="430.2" font-family="sans-serif" font-size="11">0.105</text>
+<line x1="80" y1="387.5" x2="840" y2="387.5" stroke="#eee"/>
+<text x="28" y="391.5" font-family="sans-serif" font-size="11">0.120</text>
+<line x1="80" y1="348.8" x2="840" y2="348.8" stroke="#eee"/>
+<text x="28" y="352.8" font-family="sans-serif" font-size="11">0.135</text>
+<line x1="80" y1="310.0" x2="840" y2="310.0" stroke="#eee"/>
+<text x="28" y="314.0" font-family="sans-serif" font-size="11">0.150</text>
+<polyline fill="none" stroke="#087e8b" stroke-width="2.5" points="80.0,336.2 127.5,341.3 175.0,357.8 222.5,357.4 270.0,379.7 317.5,370.3 365.0,386.1 412.5,378.4 460.0,383.1 507.5,403.9 555.0,387.8 602.5,403.4 650.0,391.1 697.5,403.2"/>
+<polyline fill="none" stroke="#5c6bc0" stroke-width="2.5" points="80.0,332.8 127.5,371.1 175.0,369.4 222.5,366.6 270.0,383.6 317.5,376.4 365.0,374.3 412.5,381.8 460.0,359.2 507.5,378.4 555.0,364.9"/>
+<polyline fill="none" stroke="#c75c18" stroke-width="2.5" points="80.0,339.1 127.5,342.4 175.0,356.4 222.5,362.3 270.0,358.7 317.5,385.7 365.0,364.3 412.5,382.1 460.0,381.4 507.5,369.3 555.0,372.1"/>
+<polyline fill="none" stroke="#2f7d32" stroke-width="2.5" points="80.0,362.9 127.5,363.7 175.0,384.9 222.5,385.7 270.0,404.0 317.5,393.6 365.0,409.2 412.5,403.2 460.0,405.4 507.5,426.7 555.0,414.0 602.5,427.9 650.0,414.5 697.5,425.8 745.0,421.1 792.5,416.5 840.0,429.9"/>
+<text x="80" y="484" font-family="sans-serif" font-size="11">1</text>
+<text x="817" y="484" font-family="sans-serif" font-size="11">17 epochs</text>
+<line x1="80" y1="530" x2="105" y2="530" stroke="#087e8b" stroke-width="3"/>
+<text x="111" y="534" font-family="sans-serif" font-size="12">corroborated 42</text>
+<line x1="280" y1="530" x2="305" y2="530" stroke="#5c6bc0" stroke-width="3"/>
+<text x="311" y="534" font-family="sans-serif" font-size="12">corroborated 14</text>
+<line x1="480" y1="530" x2="505" y2="530" stroke="#c75c18" stroke-width="3"/>
+<text x="511" y="534" font-family="sans-serif" font-size="12">corroborated 15</text>
+<line x1="680" y1="530" x2="705" y2="530" stroke="#2f7d32" stroke-width="3"/>
+<text x="711" y="534" font-family="sans-serif" font-size="12">plain_mean 42</text>
+</svg>
