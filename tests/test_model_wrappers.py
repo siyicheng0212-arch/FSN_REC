@@ -32,6 +32,20 @@ class AdaFocusWrapperTest(unittest.TestCase):
         identifiers = [id(parameter) for parameter in model.parameters()]
         self.assertEqual(len(identifiers), len(set(identifiers)))
 
+    def test_local_difference_preserves_original_logits_at_initialization(self):
+        torch.manual_seed(13)
+        original = build_model("adafocus_original", torch.device("cpu")).eval()
+        shared = {key: value.detach().clone() for key, value in original.state_dict().items()}
+        candidate = build_model("adafocus_local_difference", torch.device("cpu")).eval()
+        report = load_shared_adafocus_weights(candidate, shared)
+        frames = torch.rand(1, 8, 3, 224, 224)
+        with torch.no_grad():
+            expected = original(frames)["logits"]
+            actual = candidate(frames)["logits"]
+        self.assertLessEqual(float((expected - actual).abs().max()), 1e-5)
+        self.assertTrue(any("local_evidence" in key for key in report["missing_keys"]))
+        self.assertIsNone(original.core.local_CNN.local_evidence)
+
 
 if __name__ == "__main__":
     unittest.main()
