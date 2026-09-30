@@ -1,5 +1,31 @@
 # FSN_REC
 
+## CVM 2027 paper revision (opt-in, no performance claim)
+
+The `cvm/` package implements a controlled study of the original shared-video-
+backbone clinical hierarchy: flat and capacity controls, auxiliary supervision,
+hard/soft decoding, actual-router and fair-oracle diagnostics, fixed random
+taxonomies, recording-group paired bootstrap, and strict manifest/weight checks.
+It does not modify or resume previous AdaFocus/local-motion experiments.
+
+- [Research questions and experiment design](docs/cvm/EXPERIMENT_DESIGN.md)
+- [Literature: hierarchy and attribution](docs/cvm/literature_hierarchy.md)
+- [Literature: video and procedural benchmarks](docs/cvm/literature_video.md)
+- [Commands and environment](docs/cvm/RUNBOOK.md)
+- [Server Codex prompt](prompts/run_cvm_codex.md)
+
+This is research infrastructure, not an already validated new algorithm.
+Previously reused validation data cannot be relabelled as independent test.
+Generated private predictions, video, annotations, identities, logs, features,
+caches and weights must not be pushed to this public repository.
+
+```bash
+python -m unittest discover -s tests -p 'test_cvm_*.py' -v
+python -m cvm.protocol --help
+python -m cvm.train --help
+python -m cvm.analysis --help
+```
+
 Code release for FSN temporal action recognition, including reproducible data
 cleaning/splitting tools and an FSN-specific Uni-AdaFocus-TSM candidate model.
 

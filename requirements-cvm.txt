@@ -1,0 +1,8 @@
+# Tested locally: torch 2.2.2+cpu / torchvision 0.17.2+cpu / Python 3.12.
+# Preserve a working CUDA torch installation on the server; do not blindly
+# replace it with CPU wheels. Record installed versions in each run.
+numpy>=1.24
+torch>=2.2
+torchvision>=0.17
+# VideoMamba requires the pinned official repository's custom CUDA extensions;
+# the general pip mamba-ssm package is not a substitute. See RUNBOOK.md.

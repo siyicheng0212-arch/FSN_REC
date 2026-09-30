@@ -26,3 +26,12 @@ __pycache__/
 venv/
 .idea/
 .vscode/
+
+# CVM private protocols, cached pixels, per-clip predictions and features
+cvm_outputs/
+cvm_protocols/
+cvm_private/
+third_party/
+*.jsonl
+*.npy
+*.npz
