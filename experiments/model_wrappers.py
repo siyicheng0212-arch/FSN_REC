@@ -14,11 +14,11 @@ import torch.nn.functional as F
 
 ROOT = Path(__file__).resolve().parents[1]
 ADAFOCUS_CANDIDATES = (
+    ROOT / "models" / "Uni-AdaFocus-TSM-FSN",
     ROOT
     / "third_party"
     / "Uni-AdaFocus"
     / "Uni-AdaFocus-TSM with Experiments on Sth-Sth V1&V2 and Jester",
-    ROOT / "models" / "Uni-AdaFocus-TSM-FSN",
 )
 ADAFOCUS_ROOT = next((path for path in ADAFOCUS_CANDIDATES if path.is_dir()), None)
 if ADAFOCUS_ROOT is None:
@@ -46,6 +46,12 @@ def _adafocus_args(
     num_focus_segments: int,
     patch_size: int,
     mc_sample_times: int,
+    local_motion_mode: str = "none",
+    local_motion_context: str = "none",
+    local_motion_dim: int = 64,
+    local_motion_window: int = 3,
+    local_motion_temperature: float = 0.07,
+    local_motion_context_grid: int = 2,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         num_glance_segments=num_glance_segments,
@@ -83,6 +89,13 @@ def _adafocus_args(
         fsn_interaction_dropout=0.1,
         fsn_global_grid_size=3,
         fsn_module_lr_ratio=1.0,
+        local_motion_mode=local_motion_mode,
+        local_motion_context=local_motion_context,
+        local_motion_dim=local_motion_dim,
+        local_motion_window=local_motion_window,
+        local_motion_temperature=local_motion_temperature,
+        local_motion_context_grid=local_motion_context_grid,
+        local_motion_lr_ratio=1.0,
         mc_sample_times=mc_sample_times,
         global_lr_ratio=0.5,
         stn_lr_ratio=0.2,
@@ -103,10 +116,22 @@ class AdaFocusFSN(FSNModel):
         num_focus_segments: int = 4,
         patch_size: int = 96,
         mc_sample_times: int = 4,
+        local_motion_mode: str = "none",
+        local_motion_context: str = "none",
+        local_motion_dim: int = 64,
+        local_motion_window: int = 3,
+        local_motion_temperature: float = 0.07,
+        local_motion_context_grid: int = 2,
     ) -> None:
         super().__init__()
         device = device or torch.device("cpu")
+        if modified and local_motion_mode != "none":
+            raise ValueError("local motion experiments must start from Original (modified=False)")
         self.model_name = "adafocus_fsn" if modified else "adafocus_original"
+        if local_motion_mode != "none":
+            self.model_name = "adafocus_local_appearance" if local_motion_mode == "appearance" else (
+                "adafocus_local_motion_context" if local_motion_context == "global" else "adafocus_local_motion"
+            )
         self.num_glance_segments = num_glance_segments
         self.num_input_focus_segments = num_input_focus_segments
         self.num_focus_segments = num_focus_segments
@@ -121,8 +146,30 @@ class AdaFocusFSN(FSNModel):
                 num_focus_segments,
                 patch_size,
                 mc_sample_times,
+                local_motion_mode,
+                local_motion_context,
+                local_motion_dim,
+                local_motion_window,
+                local_motion_temperature,
+                local_motion_context_grid,
             ),
         )
+
+    @property
+    def local_motion_module(self) -> nn.Module | None:
+        return self.core.local_CNN.local_motion
+
+    def set_local_motion_enabled(self, enabled: bool) -> None:
+        module = self.local_motion_module
+        if module is None:
+            if enabled:
+                raise ValueError("this model has no local motion module")
+            return
+        module.enabled = bool(enabled)
+
+    def get_local_motion_diagnostics(self) -> dict[str, Any]:
+        module = self.local_motion_module
+        return {} if module is None else module.diagnostics()
 
     def set_class_weights(self, weights: torch.Tensor | None) -> None:
         self.class_weights = None if weights is None else weights.detach().clone()
@@ -208,11 +255,31 @@ class MViTV2Reference(FSNModel):
         return {"logits": self.core(frames.permute(0, 2, 1, 3, 4).contiguous())}
 
 
-def build_model(name: str, device: torch.device, num_classes: int = 7) -> FSNModel:
+def build_model(
+    name: str, device: torch.device, num_classes: int = 7, *,
+    local_motion_mode: str = "none", local_motion_context: str = "none",
+    local_motion_dim: int = 64, local_motion_window: int = 3,
+    local_motion_temperature: float = 0.07, local_motion_context_grid: int = 2,
+) -> FSNModel:
+    motion_names = {
+        "adafocus_local_motion": ("matching", "none"),
+        "adafocus_local_motion_context": ("matching", "global"),
+        "adafocus_local_appearance": ("appearance", "none"),
+    }
+    if name in motion_names:
+        local_motion_mode, local_motion_context = motion_names[name]
+    motion_kwargs = dict(
+        local_motion_mode=local_motion_mode, local_motion_context=local_motion_context,
+        local_motion_dim=local_motion_dim, local_motion_window=local_motion_window,
+        local_motion_temperature=local_motion_temperature,
+        local_motion_context_grid=local_motion_context_grid,
+    )
     if name == "adafocus_original":
-        model = AdaFocusFSN(num_classes=num_classes, modified=False, device=device)
+        model = AdaFocusFSN(num_classes=num_classes, modified=False, device=device, **motion_kwargs)
     elif name == "adafocus_fsn":
-        model = AdaFocusFSN(num_classes=num_classes, modified=True, device=device)
+        model = AdaFocusFSN(num_classes=num_classes, modified=True, device=device, **motion_kwargs)
+    elif name in motion_names:
+        model = AdaFocusFSN(num_classes=num_classes, modified=False, device=device, **motion_kwargs)
     elif name == "mvit_v2_s_reference":
         model = MViTV2Reference(num_classes=num_classes)
     else:

@@ -194,6 +194,11 @@ class AdaFocus(nn.Module):
         self.fsn_interaction_weight = getattr(args, 'fsn_interaction_weight', 0.2)
         self.fsn_local_grid_size = getattr(args, 'fsn_local_grid_size', 3)
         self.mc_sample_times = getattr(args, 'mc_sample_times', 128)
+        self.local_motion_mode = getattr(args, 'local_motion_mode', 'none')
+        if self.local_motion_mode != 'none' and (
+            self.fsn_local_adapter != 'none' or self.fsn_interaction_mode != 'none'
+        ):
+            raise ValueError("local motion experiments require the Original path without legacy FSN modules")
         self.use_fsn_local_features = (
             self.fsn_local_adapter != 'none' or self.fsn_interaction_mode != 'none'
         )
@@ -223,7 +228,14 @@ class AdaFocus(nn.Module):
                              return_feature_grid=self.use_fsn_local_features,
                              local_adapter_mode=self.fsn_local_adapter,
                              local_adapter_dim=getattr(args, 'fsn_adapter_dim', 256),
-                             local_grid_size=self.fsn_local_grid_size)
+                             local_grid_size=self.fsn_local_grid_size,
+                             local_motion_mode=self.local_motion_mode,
+                             local_motion_context=getattr(args, 'local_motion_context', 'none'),
+                             local_motion_dim=getattr(args, 'local_motion_dim', 64),
+                             local_motion_window=getattr(args, 'local_motion_window', 3),
+                             local_motion_temperature=getattr(args, 'local_motion_temperature', 0.07),
+                             local_motion_context_grid=getattr(args, 'local_motion_context_grid', 2),
+                             local_motion_context_channels=self.global_feature_dim)
         self.aux_fc = nn.Linear(self.global_feature_dim, num_class)
         self.spatial_policy = SpatialPolicy(
             stn_feature_dim=args.feature_map_channels,
@@ -343,7 +355,20 @@ class AdaFocus(nn.Module):
                 )
 
             B = action_1.size(0)
-            local_outputs = self.local_CNN(torch.cat([patches_1, patches_2], dim=0))
+            local_kwargs = {}
+            if self.local_CNN.local_motion is not None:
+                _, motion_positions = self._prepare_time_positions(
+                    global_feat_maps, focus_indices, glance_positions, input_positions
+                )
+                # Both crop branches belong to the same clips and use the same
+                # selected timestamps.  Global context is pooled within each
+                # clip by the module; 8 glance and 12 focus frames are never
+                # paired by array index.
+                local_kwargs = {
+                    'global_context': torch.cat([global_grid, global_grid], dim=0),
+                    'positions': torch.cat([motion_positions, motion_positions], dim=0),
+                }
+            local_outputs = self.local_CNN(torch.cat([patches_1, patches_2], dim=0), **local_kwargs)
             l_1_temp, l_2_temp = local_outputs[:2]
             local_final_logit_1, local_final_logit_2 = l_1_temp[:B], l_1_temp[B:]
             local_avg_logit_1, local_avg_logit_2 = l_2_temp[:B], l_2_temp[B:]
@@ -386,7 +411,13 @@ class AdaFocus(nn.Module):
                 patch_size=self.patch_size,
                 input_patch_size=self.patch_size
             )
-            local_outputs = self.local_CNN(patches)
+            local_kwargs = {}
+            if self.local_CNN.local_motion is not None:
+                _, motion_positions = self._prepare_time_positions(
+                    global_feat_maps, focus_indices, glance_positions, input_positions
+                )
+                local_kwargs = {'global_context': global_grid, 'positions': motion_positions}
+            local_outputs = self.local_CNN(patches, **local_kwargs)
             local_final_logit, local_avg_logit = local_outputs[:2]
             final_logit = global_final_logit + local_final_logit
             if self.use_fsn_local_features:
@@ -404,8 +435,23 @@ class AdaFocus(nn.Module):
         policies = [{'params': self.temporal_policy.parameters(), 'lr_mult': args.temporal_lr_ratio, 'decay_mult': 1, 'name': "temporal_policy"}] \
                + [{'params': self.spatial_policy.parameters(), 'lr_mult': args.stn_lr_ratio, 'decay_mult': 1, 'name': "spatial_policy"}] \
                + [{'params': self.global_CNN.parameters(), 'lr_mult': args.global_lr_ratio, 'decay_mult': 1, 'name': "global_CNN"}] \
-               + [{'params': self.aux_fc.parameters(), 'lr_mult': args.global_lr_ratio, 'decay_mult': 1, 'name': "aux_fc"}] \
-               + [{'params': self.local_CNN.parameters(), 'lr_mult': 1, 'decay_mult': 1, 'name': "local_CNN"}]
+               + [{'params': self.aux_fc.parameters(), 'lr_mult': args.global_lr_ratio, 'decay_mult': 1, 'name': "aux_fc"}]
+        motion = self.local_CNN.local_motion
+        if motion is None:
+            policies.append({'params': self.local_CNN.parameters(), 'lr_mult': 1,
+                             'decay_mult': 1, 'name': 'local_CNN'})
+        else:
+            motion_ids = {id(parameter) for parameter in motion.parameters()}
+            policies.append({
+                'params': [parameter for parameter in self.local_CNN.parameters()
+                           if id(parameter) not in motion_ids],
+                'lr_mult': 1, 'decay_mult': 1, 'name': 'local_CNN',
+            })
+            policies.append({
+                'params': list(motion.parameters()),
+                'lr_mult': getattr(args, 'local_motion_lr_ratio', 1.0),
+                'decay_mult': 1, 'name': 'local_motion',
+            })
         if self.fsn_interaction is not None:
             policies.append({
                 'params': self.fsn_interaction.parameters(),

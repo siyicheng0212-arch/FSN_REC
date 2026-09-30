@@ -17,6 +17,11 @@ remote_logs/
 *.pth
 *.pth.tar
 *.pt
+formal_results/
+local_motion_results/
+local_motion_audits/
+full_cache_36f224/
+processed_server/
 
 # Python/local files
 __pycache__/

@@ -22,9 +22,11 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
+from experiments.audit_local_motion import MOTION_VARIANTS, audit_loader, json_diagnostics
 from experiments.full_data import FullClipDataset
 from experiments.metrics import compute_classification_metrics
 from experiments.model_wrappers import (
+    ADAFOCUS_ROOT,
     AdaFocusFSN,
     load_official_adafocus_checkpoint,
     load_shared_adafocus_weights,
@@ -135,9 +137,31 @@ def make_model(args: argparse.Namespace, device: torch.device) -> tuple[AdaFocus
     baseline_state = {key: value.detach().cpu().clone() for key, value in baseline.state_dict().items()}
     if args.variant == "original":
         return baseline.to(device), checkpoint_report
+    # Newly introduced variants replay Original's post-initialization RNG state.
+    # The module has no dropout: adding its constructor must not perturb later
+    # Monte-Carlo/random-crop draws. Legacy FSN keeps its previous behavior.
+    baseline_rng = torch.random.get_rng_state()
+    baseline_cuda_rng = torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
+    motion_kwargs = {}
+    if args.variant in MOTION_VARIANTS:
+        mode, context = MOTION_VARIANTS[args.variant]
+        motion_kwargs = dict(
+            local_motion_mode=mode, local_motion_context=context,
+            local_motion_dim=getattr(args, "local_motion_dim", 64),
+            local_motion_window=getattr(args, "local_motion_window", 3),
+            local_motion_temperature=getattr(args, "local_motion_temperature", .07),
+            local_motion_context_grid=getattr(args, "local_motion_context_grid", 2),
+        )
     seed_all(args.seed)
-    modified = AdaFocusFSN(modified=True, **common)
+    modified = AdaFocusFSN(modified=args.variant == "fsn", **common, **motion_kwargs)
     shared_report = load_shared_adafocus_weights(modified, baseline_state)
+    if args.variant in MOTION_VARIANTS:
+        unrelated_missing = [key for key in shared_report["missing_keys"] if ".local_motion." not in key]
+        if unrelated_missing or shared_report["unexpected_keys"]:
+            raise RuntimeError(f"shared checkpoint mismatch: {unrelated_missing}")
+        torch.random.set_rng_state(baseline_rng)
+        if baseline_cuda_rng is not None:
+            torch.cuda.set_rng_state_all(baseline_cuda_rng)
     del baseline, baseline_state
     gc.collect()
     torch.cuda.empty_cache()
@@ -145,6 +169,9 @@ def make_model(args: argparse.Namespace, device: torch.device) -> tuple[AdaFocus
         "official_checkpoint": checkpoint_report,
         "shared_tensors_loaded": len(shared_report["loaded_keys"]),
         "new_module_tensors": len(shared_report["missing_keys"]),
+        "new_module_keys": shared_report["missing_keys"],
+        "model_source_root": str(ADAFOCUS_ROOT),
+        "local_motion_config": motion_kwargs,
     }
 
 
@@ -152,6 +179,13 @@ def write_jsonl(path: Path, rows: list[dict]) -> None:
     with path.open("w", encoding="utf-8") as handle:
         for row in rows:
             handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+def write_history(output_dir: Path, history: list[dict]) -> None:
+    """Expose completed epochs to monitoring without partial JSON writes."""
+    temporary = output_dir / "history.json.tmp"
+    temporary.write_text(json.dumps(history, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(output_dir / "history.json")
 
 
 def make_optimizer(
@@ -229,6 +263,7 @@ def train_epoch(
     clip_grad: float,
     augmentation_generator: torch.Generator,
     phase: str,
+    module_diagnostics: dict[str, Any] | None = None,
 ) -> tuple[float, float]:
     model.train()
     optimizer.zero_grad(set_to_none=True)
@@ -252,6 +287,14 @@ def train_epoch(
             )
         loss.backward()
         if batch_index % accumulation_steps == 0 or batch_index == total_batches:
+            if module_diagnostics is not None and "first_step_gradients" not in module_diagnostics:
+                module = model.local_motion_module
+                if module is not None:
+                    module_diagnostics["first_step_gradients"] = {
+                        name: None if parameter.grad is None else float(parameter.grad.detach().float().norm())
+                        for name, parameter in module.named_parameters()
+                    }
+                    module_diagnostics["forward"] = json_diagnostics(model.get_local_motion_diagnostics())
             torch.nn.utils.clip_grad_norm_(model.parameters(), clip_grad)
             optimizer.step()
             optimizer.zero_grad(set_to_none=True)
@@ -297,9 +340,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     augmentation_generator = torch.Generator().manual_seed(args.seed + 1)
     output_dir = args.output_dir / args.variant / f"seed_{args.seed}"
     output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "load_report.json").write_text(
+        json.dumps(load_report, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8"
+    )
+    (output_dir / "run_config.json").write_text(
+        json.dumps(vars(args), ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8"
+    )
     history, best_macro_f1, best_epoch, stale = [], -1.0, None, 0
     best_path = output_dir / "best.pt"
 
+    # Record the official partial-BN freeze before any temporary warm-up freeze.
+    model.train()
     original_requires_grad = {
         id(parameter): parameter.requires_grad for parameter in model.parameters()
     }
@@ -340,6 +391,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "lr_by_group": {"seven_class_heads": args.head_warmup_lr},
             }
             history.append(row)
+            write_history(output_dir, history)
             print(json.dumps({
                 "variant": args.variant, "phase": "head_warmup",
                 "epoch": epoch, "loss": train_loss,
@@ -358,14 +410,63 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         for parameter in model.parameters():
             parameter.requires_grad = original_requires_grad[id(parameter)]
 
+    # Optional adaptation phase. Default zero preserves the matched legacy
+    # budget. Original receives head-only adaptation for the SAME duration if
+    # this option is used in a paired experiment.
+    module_warmup_groups = []
+    if args.module_warmup_epochs:
+        module = model.local_motion_module
+        if args.variant == "fsn":
+            raise ValueError("module warmup is for Original/new local-motion comparisons, not legacy FSN")
+        adapted = head_parameters + ([] if module is None else list(module.parameters()))
+        adapted_ids = {id(parameter) for parameter in adapted}
+        for parameter in model.parameters():
+            parameter.requires_grad = id(parameter) in adapted_ids
+        adapt_optimizer = torch.optim.AdamW(adapted, lr=args.module_warmup_lr, weight_decay=0.)
+        module_warmup_groups = [{
+            "name": "heads_and_local_motion" if module is not None else "seven_class_heads",
+            "parameters": sum(parameter.numel() for parameter in adapted),
+            "initial_lr": args.module_warmup_lr,
+        }]
+        for epoch in range(1, args.module_warmup_epochs + 1):
+            diagnostics: dict[str, Any] = {}
+            train_loss, train_seconds = train_epoch(
+                model, loaders["train"], adapt_optimizer, device,
+                args.accumulation_steps, args.clip_grad, augmentation_generator,
+                "module_warmup", diagnostics,
+            )
+            val_metrics, _, val_seconds = evaluate(model, loaders["val"], device)
+            macro_f1 = val_metrics["all"]["macro_f1"]
+            row = {
+                "phase": "module_warmup", "epoch": epoch, "train_loss": train_loss,
+                "train_seconds": train_seconds, "val_seconds": val_seconds,
+                "val_metrics": val_metrics, "local_motion_diagnostics": diagnostics,
+                "lr": args.module_warmup_lr,
+            }
+            history.append(row)
+            write_history(output_dir, history)
+            print(json.dumps({"variant": args.variant, "phase": "module_warmup", "epoch": epoch,
+                              "loss": train_loss, "val_macro_f1": macro_f1}), flush=True)
+            if macro_f1 > best_macro_f1:
+                best_macro_f1, best_epoch = macro_f1, f"module_warmup_{epoch}"
+                torch.save({
+                    "model": model.state_dict(), "epoch": best_epoch, "val_macro_f1": macro_f1,
+                    "split_audit": split_audit, "load_report": load_report,
+                    "optimizer_groups": module_warmup_groups, "args": vars(args),
+                }, best_path)
+        del adapt_optimizer
+        for parameter in model.parameters():
+            parameter.requires_grad = original_requires_grad[id(parameter)]
+
     optimizer, optimizer_groups = make_optimizer(model, args)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
 
     for epoch in range(1, args.epochs + 1):
+        module_diagnostics: dict[str, Any] = {}
         train_loss, train_seconds = train_epoch(
             model, loaders["train"], optimizer, device,
             args.accumulation_steps, args.clip_grad,
-            augmentation_generator, "finetune",
+            augmentation_generator, "finetune", module_diagnostics,
         )
         scheduler.step()
         val_metrics, _, val_seconds = evaluate(model, loaders["val"], device)
@@ -380,8 +481,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "lr_by_group": {
                 group["name"]: group["lr"] for group in optimizer.param_groups
             },
+            "local_motion_diagnostics": module_diagnostics,
         }
         history.append(row)
+        write_history(output_dir, history)
         print(json.dumps({
             "variant": args.variant, "phase": "finetune", "epoch": epoch,
             "loss": row["train_loss"], "val_macro_f1": macro_f1,
@@ -401,6 +504,19 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
     checkpoint = torch.load(best_path, map_location=device, weights_only=False)
     model.load_state_dict(checkpoint["model"])
+    best_val_metrics, best_val_predictions, _ = evaluate(model, loaders["val"], device)
+    write_jsonl(output_dir / "val_predictions.jsonl", best_val_predictions)
+    intervention_audits = {}
+    if model.local_motion_module is not None:
+        interventions = ["module"]
+        if model.local_motion_module.context_mode == "global": interventions.append("context")
+        for intervention in interventions:
+            audit, predictions = audit_loader(model, loaders["val"], device, intervention)
+            intervention_audits[intervention] = audit
+            write_jsonl(output_dir / f"val_{intervention}_audit_predictions.jsonl", predictions)
+            (output_dir / f"val_{intervention}_audit.json").write_text(
+                json.dumps(audit, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+            )
     test_metrics = None
     if args.test_after_training:
         test_metrics, predictions, test_seconds = evaluate(model, loaders["test"], device)
@@ -416,9 +532,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "class_weight_mode": args.class_weight_mode,
         "load_report": load_report,
         "warmup_optimizer_groups": warmup_optimizer_groups,
+        "module_warmup_optimizer_groups": module_warmup_groups,
         "optimizer_groups": optimizer_groups,
         "best_epoch": best_epoch,
         "best_val_macro_f1": best_macro_f1,
+        "best_val_metrics_reevaluated": best_val_metrics,
+        "same_checkpoint_audits": intervention_audits,
         "history": history,
         "test_seconds": test_seconds,
         "test_metrics": test_metrics,
@@ -432,7 +551,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--variant", choices=("original", "fsn"), required=True)
+    parser.add_argument("--variant", choices=("original", "fsn", *MOTION_VARIANTS), required=True)
     parser.add_argument("--manifest-dir", type=Path, default=Path("processed_server/manifests"))
     parser.add_argument("--cache-dir", type=Path, default=Path("full_cache_36f224"))
     parser.add_argument("--output-dir", type=Path, default=Path("formal_results"))
@@ -451,6 +570,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--fsn-module-lr-ratio", type=float, default=1.0)
     parser.add_argument("--head-warmup-epochs", type=int, default=5)
     parser.add_argument("--head-warmup-lr", type=float, default=1e-3)
+    parser.add_argument("--local-motion-dim", type=int, default=64)
+    parser.add_argument("--local-motion-window", type=int, default=3)
+    parser.add_argument("--local-motion-temperature", type=float, default=.07)
+    parser.add_argument("--local-motion-context-grid", type=int, default=2)
+    parser.add_argument("--local-motion-lr-ratio", type=float, default=1.)
+    parser.add_argument("--module-warmup-epochs", type=int, default=0)
+    parser.add_argument("--module-warmup-lr", type=float, default=1e-3)
     parser.add_argument(
         "--class-weight-mode",
         choices=("none", "sqrt_inverse", "inverse"),
@@ -462,6 +588,19 @@ def parse_args() -> argparse.Namespace:
     args = parser.parse_args()
     if args.head_warmup_epochs < 0:
         parser.error("--head-warmup-epochs must be non-negative")
+    if args.module_warmup_epochs < 0:
+        parser.error("--module-warmup-epochs must be non-negative")
+    if args.variant == "fsn" and args.module_warmup_epochs:
+        parser.error("legacy FSN does not support the new module warmup")
+    if args.local_motion_dim < 3 or args.local_motion_context_grid < 1:
+        parser.error("local motion dim must be >=3 and context grid positive")
+    if args.local_motion_window < 3 or args.local_motion_window % 2 == 0:
+        parser.error("local motion window must be odd and >=3")
+    for name in ("local_motion_temperature", "local_motion_lr_ratio", "module_warmup_lr"):
+        if not math.isfinite(getattr(args, name)) or getattr(args, name) <= 0:
+            parser.error(f"--{name.replace('_', '-')} must be finite and positive")
+    if args.epochs < 1 or args.batch_size < 1 or args.accumulation_steps < 1 or args.patience < 1 or args.workers < 0:
+        parser.error("epochs, batch size, accumulation, patience must be positive; workers non-negative")
     args.manifest_dir = args.manifest_dir.resolve()
     args.cache_dir = args.cache_dir.resolve()
     args.output_dir = args.output_dir.resolve()
