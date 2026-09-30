@@ -1,0 +1,39 @@
+{
+  "schema_version": "fsn-v3-source-strata-order-audit-1.0",
+  "status": "exploratory_development_validation_only",
+  "validation_manifest_sha256": "ad785ec18b14b63616582a143384fac649e69e27d142dfcf87c6852f9d3c6f02",
+  "validation_clips": 823,
+  "media_records": 165,
+  "seeds": [42, 123, 2026],
+  "independent_test_used": false,
+  "clinical_source_aggregate": {
+    "sources": ["FSN", "lishui", "menzhen"],
+    "clips": 464,
+    "media_records": 77,
+    "visual_macro_f1_by_seed": [0.7924, 0.7485, 0.7655],
+    "v3_macro_f1_by_seed": [0.8136, 0.8241, 0.7856],
+    "visual_macro_f1_mean": 0.7688,
+    "v3_macro_f1_mean": 0.8078,
+    "mean_delta": 0.0390,
+    "changed_predictions_across_seeds": 96,
+    "corrected_predictions_across_seeds": 66,
+    "harmed_predictions_across_seeds": 15
+  },
+  "online_source_aggregate": {
+    "sources": ["dy", "ks", "bilibili", "youtube"],
+    "clips": 359,
+    "media_records": 88,
+    "visual_macro_f1_by_seed": [0.7224, 0.6912, 0.7107],
+    "v3_macro_f1_by_seed": [0.7181, 0.7306, 0.7373],
+    "visual_macro_f1_mean": 0.7081,
+    "v3_macro_f1_mean": 0.7287,
+    "mean_delta": 0.0206,
+    "changed_predictions_across_seeds": 41,
+    "corrected_predictions_across_seeds": 30,
+    "harmed_predictions_across_seeds": 9
+  },
+  "singleton_group_clips": 27,
+  "singleton_predictions_changed": 0,
+  "interpretation": "Both source aggregates contain all seven classes, but source type is not an independently audited continuous-versus-edited label. Online seed 42 regressed slightly. These numbers describe annotated-segment order predictiveness on a repeatedly examined development-validation split, not a verified clinical-workflow effect or independent test generalization.",
+  "privacy_exclusions": ["media identifiers", "clip identifiers", "patient identifiers", "private source paths", "raw predictions", "videos"]
+}
