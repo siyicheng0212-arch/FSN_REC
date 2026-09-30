@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from ops.basic_ops import ConsensusModule
 from ops.transforms import *
 from torch.nn.init import normal_, constant_
-from archs.fsn_modules import LocalTemporalAdapter
+from archs.fsn_modules import LocalSpatiotemporalEvidence, LocalTemporalAdapter
 
 
 class TSN(nn.Module):
@@ -20,7 +20,8 @@ class TSN(nn.Module):
                  crop_num=1, partial_bn=True, print_spec=True, pretrain='imagenet',
                  is_shift=False, shift_div=8, shift_place='blockres', fc_lr5=False,
                  temporal_pool=False, non_local=False, return_feature_grid=False,
-                 local_adapter_mode='none', local_adapter_dim=256, local_grid_size=3):
+                 local_adapter_mode='none', local_adapter_dim=256, local_grid_size=3,
+                 local_evidence_mode='none'):
         super(TSN, self).__init__()
         self.modality = modality
         self.num_segments = num_segments
@@ -39,7 +40,7 @@ class TSN(nn.Module):
         self.fc_lr5 = fc_lr5
         self.temporal_pool = temporal_pool
         self.non_local = non_local
-        self.return_feature_grid = return_feature_grid
+        self.return_feature_grid = return_feature_grid or local_evidence_mode != 'none'
         self.local_grid_size = local_grid_size
         self.local_adapter_mode = local_adapter_mode
 
@@ -79,6 +80,17 @@ class TSN(nn.Module):
             )
         else:
             self.local_adapter = None
+
+        if local_evidence_mode not in {'none', 'difference', 'appearance'}:
+            raise ValueError("local_evidence_mode must be none, difference, or appearance")
+        if local_evidence_mode != 'none':
+            if 'resnet' not in base_model:
+                raise ValueError("local evidence requires a ResNet local backbone")
+            self.local_evidence = LocalSpatiotemporalEvidence(
+                channels=512, bottleneck=64, mode=local_evidence_mode,
+            )
+        else:
+            self.local_evidence = None
 
         feature_dim = self._prepare_tsn(num_class)
 
@@ -237,6 +249,8 @@ class TSN(nn.Module):
         features = model.maxpool(features)
         features = model.layer1(features)
         features = model.layer2(features)
+        if self.local_evidence is not None:
+            features = self.local_evidence(features, self.num_segments)
         features = model.layer3(features)
         if self.local_adapter is not None:
             features = self.local_adapter(features, self.num_segments)
