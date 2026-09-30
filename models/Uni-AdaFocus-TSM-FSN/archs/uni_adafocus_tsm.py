@@ -190,6 +190,7 @@ class AdaFocus(nn.Module):
         self.num_classes = num_class
         self.device = args.device
         self.fsn_local_adapter = getattr(args, 'fsn_local_adapter', 'none')
+        self.local_evidence_mode = getattr(args, 'local_evidence_mode', 'none')
         self.fsn_interaction_mode = getattr(args, 'fsn_interaction', 'none')
         self.fsn_interaction_weight = getattr(args, 'fsn_interaction_weight', 0.2)
         self.fsn_local_grid_size = getattr(args, 'fsn_local_grid_size', 3)
@@ -223,7 +224,8 @@ class AdaFocus(nn.Module):
                              return_feature_grid=self.use_fsn_local_features,
                              local_adapter_mode=self.fsn_local_adapter,
                              local_adapter_dim=getattr(args, 'fsn_adapter_dim', 256),
-                             local_grid_size=self.fsn_local_grid_size)
+                             local_grid_size=self.fsn_local_grid_size,
+                             local_evidence_mode=self.local_evidence_mode)
         self.aux_fc = nn.Linear(self.global_feature_dim, num_class)
         self.spatial_policy = SpatialPolicy(
             stn_feature_dim=args.feature_map_channels,
