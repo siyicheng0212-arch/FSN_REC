@@ -48,6 +48,63 @@ def hierarchy_row(index, target, route=3, fine=None, groups=CLINICAL_GROUPS):
 
 
 class MetricTests(unittest.TestCase):
+    def test_short_clip_exclusion_is_an_additional_fixed_sensitivity(self):
+        rows = [flat_row(index, index % 7) for index in range(14)]
+        for index, row in enumerate(rows):
+            row["duration"] = .06 if index < 4 else .1 if index < 8 else .4
+        report = metric_report(rows, metadata=metadata(), min_slice_samples=1)
+        self.assertEqual(report["num_samples"], 14)
+        slices = report["slices"]["results"]
+        self.assertEqual(slices["duration:lt_0_1s"]["num_samples"], 4)
+        self.assertEqual(slices["sensitivity:exclude_duration_lt_0_1s"]["num_samples"], 10)
+        self.assertEqual(slices["duration:ge_0_1s_lt_0_5s"]["num_samples"], 10)
+
+    def test_probe_pairing_is_opt_in_and_rejects_other_changed_treatments(self):
+        rows = [flat_row(index, index % 7) for index in range(14)]
+        left = metadata()
+        left["checkpoint_sha256"] = "b" * 64
+        left["eval_metadata"]["probe"] = "none"
+        right = copy.deepcopy(left)
+        right["eval_metadata"]["probe"] = "shuffle"
+        with self.assertRaises(ValueError):
+            compare_predictions(rows, rows, baseline_metadata=left, candidate_metadata=right, bootstrap_replicates=10)
+        report = compare_predictions(rows, rows, baseline_metadata=left, candidate_metadata=right,
+                                     bootstrap_replicates=10, same_checkpoint_probe=True)
+        self.assertEqual(report["paired_uncertainty"]["comparison_type"], "same_checkpoint_temporal_probe")
+        self.assertEqual(report["paired_uncertainty"]["metrics"]["macro_f1"]["paired_delta"], 0)
+        changed = copy.deepcopy(right)
+        changed["eval_metadata"]["num_frames"] = 32
+        with self.assertRaises(ValueError):
+            compare_predictions(rows, rows, baseline_metadata=left, candidate_metadata=changed,
+                                bootstrap_replicates=10, same_checkpoint_probe=True)
+
+    def test_frame_sensitivity_is_narrow_and_explicit(self):
+        rows = [flat_row(index, index % 7) for index in range(14)]
+        candidate_rows = copy.deepcopy(rows)
+        for row in candidate_rows:
+            row["repeated_frame_fraction"] = .75
+        left = metadata()
+        left["eval_metadata"] = {"backbone": "r2plus1d_18", "probe": "none",
+                                  "preprocessing": {"frames": 16, "crop_size": [112, 112]},
+                                  "repeated_frame_fraction_basis": "selected16"}
+        right = copy.deepcopy(left)
+        right["eval_metadata"]["preprocessing"]["frames"] = 32
+        right["eval_metadata"]["repeated_frame_fraction_basis"] = "selected32"
+        with self.assertRaises(ValueError):
+            compare_predictions(rows, candidate_rows, baseline_metadata=left, candidate_metadata=right, bootstrap_replicates=10)
+        report = compare_predictions(rows, candidate_rows, baseline_metadata=left, candidate_metadata=right,
+                                     bootstrap_replicates=10, frame_sensitivity=True)
+        self.assertEqual(report["paired_uncertainty"]["comparison_type"], "frames16_vs32")
+        right["eval_metadata"]["preprocessing"]["crop_size"] = [224, 224]
+        with self.assertRaises(ValueError):
+            compare_predictions(rows, candidate_rows, baseline_metadata=left, candidate_metadata=right,
+                                bootstrap_replicates=10, frame_sensitivity=True)
+        changed = copy.deepcopy(right)
+        changed["checkpoint_sha256"] = "c" * 64
+        with self.assertRaises(ValueError):
+            compare_predictions(rows, rows, baseline_metadata=left, candidate_metadata=changed,
+                                bootstrap_replicates=10, same_checkpoint_probe=True)
+
     def test_confusion_metrics_exact_and_absent_classes_fixed_zero(self):
         rows = [flat_row(0, 3, 3), flat_row(1, 4, 3), flat_row(2, 3, 4), flat_row(3, 4, 4)]
         report = metric_report(rows, metadata=metadata())

@@ -6,18 +6,20 @@
 
 ```bash
 python -m unittest discover -s tests -p 'test_cvm_*.py' -q
-# Ran 99 tests ... OK
+# Ran 171 tests ... OK
 python -m compileall -q cvm
 bash -n scripts/run_cvm_4gpu.sh
 git diff --cached --check
 ```
 
-99项覆盖：冻结 manifest 的组/来源/已核身份/曝光历史/文件与实现SHA；模型概率分解和未训练头保护；同参数容量控制；四种模式的加权/非加权/末尾不足梯度累积；真实格式 synthetic36f224 cache + native16帧预处理 + injected tiny backbone 的一轮训练/验证/报告；warm-up高分不能成为FullFT best；SIGINT保留last且退出130；选中帧打乱保留集合；完整七类FP/FN的五类F1；actual/mapped/aggregated router；不同taxonomy下双方同组oracle；录制组bootstrap；隐私与不覆盖输出；固定矩阵和dry-run不启动。
+171项覆盖：冻结manifest的组/来源/已核身份/曝光历史/文件与实现SHA；模型概率分解和未训练头保护；同参数容量控制；四种模式的加权/非加权/末尾不足梯度累积；真实格式synthetic36f224 cache + native16帧预处理 + injected tiny backbone的一轮训练/验证/报告；warm-up高分不能成为FullFT best；SIGINT保留last且退出130；选中帧打乱保留集合；完整七类FP/FN的五类F1；actual/mapped/aggregated router；不同taxonomy双方同组oracle；录制组bootstrap；全部预声明配对批处理、缺失seed与失败状态；16/32分母、冻结参数及BN统计；来源留出clean test继承与不提升旧train/val；自动对比/消融表、覆盖缺项和混协议拒绝；活跃部署head路径/参数口径；固定39/57矩阵、真实argv解析、mock调度单次启动、dry-run不启动。
 
 专项 VideoMamba 合同测试使用模拟小 encoder，核对固定源码、依赖来源、strict key/shape、非有限参数与输出。不代表实际官方VideoMamba/CUDA模型已可运行。Torchvision实际模型做过CPU形状前向，但没有在本任务下载并实载其正式预训练二进制。
 
+新增VideoMAE13项合同测试，与模型14项共27项通过。官方pin源码在`timm0.4.12`/CPU以随机权重做16×224合成输入前向，输出[1,768]有限；去头参数86,227,200。这个形状检查**没有加载发布预训练权重，也不是FSN训练成绩**。原始官方权重容器与真实CUDA仍待服务器核验。部署profiler11项CPU合同通过，未运行CUDA延迟/吞吐测量；合成profile也不输出临床分类成绩。
+
 服务器仍需完成：官方checkpoint实际载入与SHA、真实cache及data protocol、CUDA FP32/AMP前后向、各训练路径的非零梯度、显存与每轮耗时、完整训练、独立test资格核验与最终实证。本次没有重启服务器，没有启动任何训练，没有恢复旧seed/wave。
 
-预注册矩阵：pilot = 4个R2+1D模式×seed42；formal = 11配置×seeds42/2026/2027。编写和测试该矩阵不等于已经完成33次实验，也不能保证方法有益或CVM接收。
+预注册矩阵：pilot=4个R2+1D模式×seed42；formal=四视觉主干及主消融13配置×seeds42/2026/2027=39训练；extended=19配置×3=57训练。formal的clinical flat/hierarchy24checkpoint可单独生成72次none/static/shuffle评估，0次新训练。数量/去重/参数/缺依赖拒绝已验证，**不等于已经执行这些医疗实验**，也不能保证方法有益或CVM接收。
 
 文献书目分别为 [references.bib](references.bib) 和 [references_hierarchy.bib](references_hierarchy.bib)；实际阅读范围在两份literature笔记中说明。

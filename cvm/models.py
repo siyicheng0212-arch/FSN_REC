@@ -23,7 +23,7 @@ import torch.nn.functional as F
 from .taxonomy import NUM_CLASSES, Taxonomy, clinical_taxonomy, _validate_targets
 
 
-BACKBONES = ("r2plus1d_18", "mvit_v2_s", "r3d_18", "videomamba_tiny16")
+BACKBONES = ("r2plus1d_18", "mvit_v2_s", "r3d_18", "videomamba_tiny16", "videomae_base16")
 MODES = ("flat", "capacity_control", "aux_flat", "hierarchy")
 
 
@@ -32,6 +32,11 @@ def preprocessing_spec(backbone: str) -> dict[str, Any]:
         backbone = "videomamba_tiny16"
     if backbone not in BACKBONES:
         raise ValueError(f"unsupported backbone: {backbone}")
+    if backbone == "videomae_base16":
+        # Official VideoMAE K400 evaluation uses short side 224 / center 224.
+        # Its model _cfg's generic .5 mean/std are not the finetuning recipe.
+        return {"frames": 16, "crop_size": [224, 224], "resize_size": [224],
+                "mean": [.485, .456, .406], "std": [.229, .224, .225]}
     if backbone == "videomamba_tiny16":
         return {"frames": 16, "crop_size": [224, 224], "resize_size": [256],
                 "mean": [.485, .456, .406], "std": [.229, .224, .225]}
@@ -58,7 +63,7 @@ def preprocessing_transform(backbone: str):
     Accepts [T,C,H,W] or [B,T,C,H,W] uint8 or float [0,1], returns [C,T,H,W]
     or [B,C,T,H,W]. Temporal subsampling is the trainer's declared protocol.
     """
-    if backbone in ("videomamba_tiny", "videomamba_tiny16"):
+    if backbone in ("videomamba_tiny", "videomamba_tiny16", "videomae_base16"):
         from torchvision.transforms._presets import VideoClassification
         spec = preprocessing_spec(backbone)
         return VideoClassification(crop_size=spec["crop_size"], resize_size=spec["resize_size"],
@@ -181,13 +186,27 @@ def _load_native_weights(model: nn.Module, backbone: str, weights, weights_path,
 def build_model(backbone: str = "r2plus1d_18", mode: str = "flat", taxonomy: Taxonomy | None = None,
                 *, weights="DEFAULT", weights_path=None, allow_download: bool = False,
                 seed: int | None = None, external_repo=None, videomamba_root=None,
-                videomamba_checkpoint=None) -> ClinicalHierarchyModel:
+                videomamba_checkpoint=None, videomae_root=None,
+                videomae_checkpoint=None) -> ClinicalHierarchyModel:
+    if backbone == "videomae_base16":
+        repo = external_repo if external_repo is not None else videomae_root
+        checkpoint = weights_path if weights_path is not None else videomae_checkpoint
+        if repo is None or checkpoint is None:
+            raise ValueError("VideoMAE requires explicit official repository and finetuned K400 checkpoint paths")
+        from .videomae import build_videomae_base16
+        context = torch.random.fork_rng(devices=[]) if seed is not None else nullcontext()
+        with context:
+            if seed is not None:
+                torch.random.default_generator.manual_seed(seed)
+            core = build_videomae_base16(repo_path=repo, checkpoint_path=checkpoint, seed=seed)
+            return ClinicalHierarchyModel(core, core.feature_dim, mode=mode,
+                                          taxonomy=taxonomy, load_report=core.load_report)
     if backbone in ("videomamba_tiny", "videomamba_tiny16"):
-        from .videomamba import build_videomamba_tiny16
         repo = external_repo if external_repo is not None else videomamba_root
         checkpoint = weights_path if weights_path is not None else videomamba_checkpoint
         if repo is None or checkpoint is None:
             raise ValueError("VideoMamba requires explicit official repository and pretrained checkpoint paths")
+        from .videomamba import build_videomamba_tiny16
         context = torch.random.fork_rng(devices=[]) if seed is not None else nullcontext()
         with context:
             if seed is not None:

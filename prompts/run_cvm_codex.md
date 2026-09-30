@@ -1,6 +1,6 @@
 # 服务器 Codex prompt：CVM 开发阶段，四卡核验与固定 pilot
 
-你接手 FSN_REC 的 CVM 修订实验。请先读 `docs/cvm/EXPERIMENT_DESIGN.md`、`RUNBOOK.md` 和两份 literature 文档，再执行本任务。代码是 `siyicheng0212-arch/FSN_REC` 的 `codex/cvm-fsn-evidence-v1` 分支。目标是完成**旧稿临床层次结构的严格实验**，不是恢复之前失败的局部运动模块。
+你接手 FSN_REC 的 CVM 修订实验。请先读 `docs/cvm/EXPERIMENT_DESIGN.md`、`EXPERIMENT_MATRIX.md`、`RUNBOOK.md`和两份literature文档，再执行本任务。代码是 `siyicheng0212-arch/FSN_REC` 的 `codex/cvm-fsn-evidence-v1` 分支。目标是核验**共享主干临床层次结构的严格实验**，不是恢复之前失败的局部运动模块。当前实现不自动等同于旧稿分阶段训练的严格复现。
 
 本次授权：只读盘点与备份检查，创建独立 worktree/私有协议和全新输出，取得明确官方预训练权重、必要依赖核验，真实 CUDA smoke，以及 smoke 通过后一次 seed42 四组 R2+1D pilot。缺失的关键信息应报告，已有可完成的开发工作继续做。不要重复询问已经授权的上述操作。
 
@@ -31,7 +31,7 @@
 
 先用真实 train/cache 示例完成 R2+1D 的 FP32 与 bf16 单 batch 前后向：原cache36，选16帧；native空间112；检查七类输出、有限loss、有效分类头梯度和finetune主干梯度、显存。未训练头无梯度是预期，不能当失败；singleton没有fine头。给出具体load_report和参数报告。
 
-VideoMamba/MViT 此阶段不要求启动训练。可只读准备其正式权重；VideoMamba必须固定官方repo `37355c26d0ae99ca2459f6d4044a5f509031a79f` 与定制CUDA扩展，不用标准mamba-ssm替代。缺少其真实GPU前后向，就不能声称现代完整矩阵已准备好。
+VideoMamba/MViT/VideoMAE此阶段不要求启动训练。可只读准备其正式权重；VideoMamba必须固定官方repo `37355c26d0ae99ca2459f6d4044a5f509031a79f`与定制CUDA扩展，不用标准mamba-ssm替代。VideoMAE固定MCG-NJU源码`14ef8d856287c94ef1f985fe30f958eb4ec2c55d`，官方v1-B K400800e后400类fine-tuned checkpoint，不能换v2K710/HFfeatureextractor/随机权重。缺真实GPU前后向时不能声称现代完整矩阵已准备好。
 
 ## 3. smoke → pilot，一次启动
 
@@ -60,6 +60,6 @@ OOM/NaN/长时间无epoch/单类塌缩时保存现场并报告；不盲目重启
 
 可在完成训练后用固定checkpoint做val static/shuffle，各输出新目录；shuffle必须保留已选16帧集合。不要根据诊断结果调整本轮模型，重新开发必须新版本。
 
-不要自动进入33次formal矩阵，不追加旧seed/wave，不做test。给出本轮真实结果、负结果和尚缺独立test/近期模型验证的清单后暂停。正式矩阵已在代码中预注册11配置×42/2026/2027，但不因某一单seed涨点宣称论文成立，也不删不利对照。
+不要自动进入39次formal或57次extended矩阵，不追加旧seed/wave，不做test。给出本轮真实结果、负结果和尚缺独立test/现代模型验证的清单后暂停。正式矩阵已预注册13配置×42/2026/2027；附加敏感性19配置×3。完整开发矩阵另用`prompts/run_cvm_full_matrix_codex.md`，不要执行本pilot后自行切换该授权范围。单seed不证明论文成立，不能删不利对照。
 
 若发布，只导出去身份聚合到新非main分支；视频、原标注、逐clip预测、含路径原日志、身份表、cache、features、weights和私有配置不上传，不自动merge main。报告必须区分“代码检查”“启动”“训练完成”“单seed开发结果”和“独立测试证据”。

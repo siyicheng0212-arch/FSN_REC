@@ -358,6 +358,13 @@ def _slices(data: PredictionSet, *, min_samples: int, min_groups: int) -> dict[s
         source_alias = "source-" + hashlib.sha256(row["source"].encode()).hexdigest()[:12]
         indices["source:" + source_alias].append(index)
         indices["duration:le_3s" if row["duration"] <= 3 else "duration:gt_3s_le_10s" if row["duration"] <= 10 else "duration:gt_10s"].append(index)
+        if row["duration"] < .1:
+            indices["duration:lt_0_1s"].append(index)
+        else:
+            # Fixed sensitivity subset. Do not replace the complete main table.
+            indices["sensitivity:exclude_duration_lt_0_1s"].append(index)
+        if .1 <= row["duration"] < .5:
+            indices["duration:ge_0_1s_lt_0_5s"].append(index)
         repeated = row["repeated_frame_fraction"]
         if repeated is not None:
             indices["repeated_frames:none" if repeated == 0 else "repeated_frames:gt_0_le_0_25" if repeated <= 0.25 else "repeated_frames:gt_0_25"].append(index)
@@ -419,16 +426,45 @@ def metric_report(rows: Sequence[Mapping[str, Any]], *, metadata: Mapping[str, A
     return _metric_report(data, min_slice_samples, min_slice_groups)
 
 
-def _matched(baseline: PredictionSet, candidate: PredictionSet) -> tuple[PredictionSet, PredictionSet]:
-    for key in ("protocol_sha256", "split", "eval_metadata", "selection_exposure"):
+def _matched(baseline: PredictionSet, candidate: PredictionSet, *, same_checkpoint_probe: bool = False,
+             frame_sensitivity: bool = False) -> tuple[PredictionSet, PredictionSet]:
+    if same_checkpoint_probe and frame_sensitivity:
+        raise ValueError("probe and frame sensitivity are distinct declared contrasts")
+    for key in ("protocol_sha256", "split", "selection_exposure"):
         if baseline.metadata.get(key) != candidate.metadata.get(key):
             raise ValueError("paired evaluations must share protocol, split, exposure, and evaluation treatment metadata")
+    left_treatment = dict(baseline.metadata.get("eval_metadata", {}))
+    right_treatment = dict(candidate.metadata.get("eval_metadata", {}))
+    if same_checkpoint_probe:
+        checksum = baseline.metadata.get("checkpoint_sha256")
+        if not isinstance(checksum, str) or len(checksum) != 64 or checksum != candidate.metadata.get("checkpoint_sha256"):
+            raise ValueError("probe contrast requires the same explicit checkpoint SHA")
+        if baseline.groups != candidate.groups or baseline.metadata["trained_heads"] != candidate.metadata["trained_heads"]:
+            raise ValueError("probe contrast cannot change taxonomy or trained heads")
+        if left_treatment.pop("probe", None) != "none" or right_treatment.pop("probe", None) not in ("static", "shuffle"):
+            raise ValueError("probe contrast must compare none with static or shuffle")
+    if frame_sensitivity:
+        if baseline.groups != candidate.groups or baseline.metadata["trained_heads"] != candidate.metadata["trained_heads"] or baseline.metadata.get("mode") != candidate.metadata.get("mode"):
+            raise ValueError("frame sensitivity cannot also change taxonomy, model mode or trained heads")
+        if left_treatment.get("backbone") not in ("r2plus1d_18", "r3d_18") or left_treatment.get("backbone") != right_treatment.get("backbone"):
+            raise ValueError("frame sensitivity requires the same convolutional backbone")
+        if left_treatment.get("probe") != "none" or right_treatment.get("probe") != "none":
+            raise ValueError("frame sensitivity cannot also change the evidence probe")
+        left_preprocess = dict(left_treatment.pop("preprocessing", {}))
+        right_preprocess = dict(right_treatment.pop("preprocessing", {}))
+        if left_preprocess.pop("frames", None) != 16 or right_preprocess.pop("frames", None) != 32 or left_preprocess != right_preprocess:
+            raise ValueError("frame sensitivity permits only 16-to-32 frame count, with identical spatial preprocessing")
+        left_treatment.pop("repeated_frame_fraction_basis", None)
+        right_treatment.pop("repeated_frame_fraction_basis", None)
+    if left_treatment != right_treatment:
+        raise ValueError("paired evaluations must share evaluation treatment except an explicitly declared same-checkpoint probe")
     left = {row["clip_id"]: index for index, row in enumerate(baseline.rows)}
     right = {row["clip_id"]: index for index, row in enumerate(candidate.rows)}
     if left.keys() != right.keys():
         raise ValueError("paired evaluations must have exactly the same clip identifiers; intersection matching is forbidden")
     for clip_id, index in left.items():
-        for key in ("target", "group_id", "source", "duration", "repeated_frame_fraction"):
+        keys = ("target", "group_id", "source", "duration") if frame_sensitivity else ("target", "group_id", "source", "duration", "repeated_frame_fraction")
+        for key in keys:
             if baseline.rows[index][key] != candidate.rows[right[clip_id]][key]:
                 raise ValueError("paired clip targets and grouping/source/duration/frame metadata must agree exactly")
     order = [right[row["clip_id"]] for row in baseline.rows]
@@ -446,9 +482,10 @@ def _quantile(values: Sequence[float], q: float) -> float:
 
 
 def paired_cluster_bootstrap(baseline: PredictionSet, candidate: PredictionSet, *, baseline_method: str = "main", candidate_method: str = "main",
-                            replicates: int = 2000, seed: int = 42) -> dict[str, Any]:
+                            replicates: int = 2000, seed: int = 42, same_checkpoint_probe: bool = False,
+                            frame_sensitivity: bool = False) -> dict[str, Any]:
     """Paired percentile intervals resampling complete original recording groups."""
-    baseline, candidate = _matched(baseline, candidate)
+    baseline, candidate = _matched(baseline, candidate, same_checkpoint_probe=same_checkpoint_probe, frame_sensitivity=frame_sensitivity)
     if baseline_method not in baseline.predictions or candidate_method not in candidate.predictions:
         raise ValueError("requested comparison uses an unavailable or untrained prediction head")
     oracle_taxonomy = None
@@ -499,6 +536,7 @@ def paired_cluster_bootstrap(baseline: PredictionSet, candidate: PredictionSet, 
     return {"method": "paired_original_recording_cluster_percentile_bootstrap", "num_recording_groups": len(positions),
             "num_clips": len(targets), "replicates": replicates, "seed": seed,
             "baseline_method": baseline_method, "candidate_method": candidate_method,
+            "comparison_type": "same_checkpoint_temporal_probe" if same_checkpoint_probe else "frames16_vs32" if frame_sensitivity else "matched_model",
             "oracle_shared_truth_group_taxonomy": oracle_taxonomy,
             "metrics": {metric: {"baseline": observed_baseline[metric], "candidate": observed_candidate[metric],
                                  "paired_delta": observed_candidate[metric] - observed_baseline[metric],
@@ -512,9 +550,10 @@ def paired_cluster_bootstrap(baseline: PredictionSet, candidate: PredictionSet, 
 def compare_predictions(baseline_rows: Sequence[Mapping[str, Any]], candidate_rows: Sequence[Mapping[str, Any]], *,
                         baseline_metadata: Mapping[str, Any] | None = None, candidate_metadata: Mapping[str, Any] | None = None,
                         baseline_groups: Any = None, candidate_groups: Any = None, baseline_method: str = "main", candidate_method: str = "main",
-                        bootstrap_replicates: int = 2000, seed: int = 42, min_slice_samples: int = 10, min_slice_groups: int = 2) -> dict[str, Any]:
+                        bootstrap_replicates: int = 2000, seed: int = 42, min_slice_samples: int = 10, min_slice_groups: int = 2,
+                        same_checkpoint_probe: bool = False, frame_sensitivity: bool = False) -> dict[str, Any]:
     baseline, candidate = _matched(validate_predictions(baseline_rows, metadata=baseline_metadata, groups=baseline_groups),
-                                   validate_predictions(candidate_rows, metadata=candidate_metadata, groups=candidate_groups))
+                                   validate_predictions(candidate_rows, metadata=candidate_metadata, groups=candidate_groups), same_checkpoint_probe=same_checkpoint_probe, frame_sensitivity=frame_sensitivity)
     fair_flat_predictions = None
     if "flat" in baseline.metadata["trained_heads"]:
         fair_flat_predictions = tuple(_argmax(row["flat_scores"], candidate.groups[candidate.class_to_group[row["target"]]]) for row in baseline.rows)
@@ -523,7 +562,7 @@ def compare_predictions(baseline_rows: Sequence[Mapping[str, Any]], candidate_ro
         predictions = dict(baseline.predictions)
         predictions["oracle_flat"] = fair_flat_predictions
         bootstrap_baseline = PredictionSet(baseline.rows, baseline.groups, baseline.metadata, predictions, baseline.class_to_group)
-    interval = paired_cluster_bootstrap(bootstrap_baseline, candidate, baseline_method=baseline_method, candidate_method=candidate_method, replicates=bootstrap_replicates, seed=seed)
+    interval = paired_cluster_bootstrap(bootstrap_baseline, candidate, baseline_method=baseline_method, candidate_method=candidate_method, replicates=bootstrap_replicates, seed=seed, same_checkpoint_probe=same_checkpoint_probe, frame_sensitivity=frame_sensitivity)
     if bootstrap_baseline is not baseline:
         interval["oracle_shared_truth_group_taxonomy"] = [list(group) for group in candidate.groups]
     targets = [row["target"] for row in baseline.rows]
@@ -631,6 +670,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     compare.add_argument("--candidate-method", default="main", choices=("main", "flat", "hard", "soft", "oracle_flat", "oracle_hierarchy"))
     compare.add_argument("--bootstrap-replicates", type=int, default=2000)
     compare.add_argument("--seed", type=int, default=42)
+    compare.add_argument("--same-checkpoint-probe", action="store_true", help="Explicit none-vs-static/shuffle contrast; requires identical checkpoint SHA and all other treatments")
+    compare.add_argument("--frame-sensitivity", action="store_true", help="Declared R2/R3D 16-to-32-frame contrast; preserves every other spatial/evaluation treatment")
     for command in (aggregate, compare):
         command.add_argument("--output", required=True)
         command.add_argument("--min-slice-samples", type=int, default=10)
@@ -646,7 +687,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             report = compare_predictions(baseline_rows, candidate_rows, baseline_metadata=baseline_meta, candidate_metadata=candidate_meta,
                                          baseline_method=args.baseline_method, candidate_method=args.candidate_method,
                                          bootstrap_replicates=args.bootstrap_replicates, seed=args.seed,
-                                         min_slice_samples=args.min_slice_samples, min_slice_groups=args.min_slice_groups)
+                                         min_slice_samples=args.min_slice_samples, min_slice_groups=args.min_slice_groups,
+                                         same_checkpoint_probe=args.same_checkpoint_probe, frame_sensitivity=args.frame_sensitivity)
         serialized = json.dumps(report, ensure_ascii=False, allow_nan=False, indent=2) + "\n"
         output = Path(args.output)
         inputs = [Path(value).resolve() for key, value in vars(args).items() if key in ("predictions", "metadata", "baseline", "candidate", "baseline_metadata", "candidate_metadata") and value]

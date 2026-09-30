@@ -169,6 +169,17 @@ class ModelTests(unittest.TestCase):
         self.assertEqual(preprocessing_transform("mvit_v2_s")(clip).shape, (3, 2, 224, 224))
         self.assertEqual(preprocessing_spec("mvit_v2_s")["frames"], 16)
         self.assertEqual(preprocessing_spec("r2plus1d_18")["frames"], 16)
+        self.assertEqual(preprocessing_spec("videomae_base16")["frames"], 16)
+        self.assertEqual(preprocessing_spec("videomae_base16")["resize_size"], [224])
+        self.assertEqual(preprocessing_spec("videomae_base16")["mean"], [.485, .456, .406])
+        self.assertEqual(preprocessing_transform("videomae_base16")(clip).shape, (3, 2, 224, 224))
+
+    def test_external_backbones_require_explicit_source_and_checkpoint(self):
+        for backbone in ("videomamba_tiny16", "videomae_base16"):
+            with self.assertRaises(ValueError):
+                build_model(backbone, weights=None)
+            with self.assertRaises(ValueError):
+                build_model(backbone, external_repo="/unused/source", weights=None)
 
     def test_missing_pretrained_is_an_error_not_random_fallback(self):
         with tempfile.TemporaryDirectory() as directory:

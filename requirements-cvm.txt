@@ -6,3 +6,6 @@ torch>=2.2
 torchvision>=0.17
 # VideoMamba requires the pinned official repository's custom CUDA extensions;
 # the general pip mamba-ssm package is not a substitute. See RUNBOOK.md.
+# VideoMAE additionally requires timm in its isolated pinned-source environment.
+# Validate the actual installed version with the official source before launch;
+# do not replace the server's torch/torchvision just to match CPU test wheels.

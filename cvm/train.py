@@ -29,7 +29,7 @@ from experiments.metrics import compute_classification_metrics
 
 ROOT = Path(__file__).resolve().parents[1]
 MODES = ("flat", "capacity_control", "aux_flat", "hierarchy")
-BACKBONES = ("r2plus1d_18", "r3d_18", "mvit_v2_s", "videomamba_tiny16")
+BACKBONES = ("r2plus1d_18", "r3d_18", "mvit_v2_s", "videomamba_tiny16", "videomae_base16")
 
 
 def sha256_file(path: Path) -> str:
@@ -99,9 +99,21 @@ class StopRequest:
         self.signal_number = signum
 
 
+def selected_frame_count(backbone: str, frames: int | None = None) -> int:
+    """Only convolutional baselines support the predeclared 32-frame sensitivity."""
+    count = 16 if frames is None else frames
+    if isinstance(count, bool) or count not in (16, 32):
+        raise ValueError("frames must be 16 or 32")
+    if count != 16 and backbone not in ("r2plus1d_18", "r3d_18"):
+        raise ValueError("32-frame sensitivity is restricted to R2+1D/R3D; fixed-length pretrained transformers cannot be silently interpolated")
+    return count
+
+
 class CachedProtocolDataset(FullClipDataset):
     """Reuse existing uint8 cache loading, with explicit protocol cache routing."""
-    def __init__(self, protocol: Any, split: str, cache_root: Path):
+    def __init__(self, protocol: Any, split: str, cache_root: Path, selected_frames: int = 16):
+        if isinstance(selected_frames, bool) or selected_frames not in (16, 32):
+            raise ValueError("repeat audit requires selected_frames 16 or 32")
         self.torch = torch
         self.records = [protocol.cache_record(record) for record in protocol.records[split]]
         self.cache_root = Path(cache_root)
@@ -117,9 +129,9 @@ class CachedProtocolDataset(FullClipDataset):
             self.cache_repeat_fractions[record.clip_id] = float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and 0 <= value <= 1 else None
             if split != "train":
                 array = np.load(array_path, mmap_mode="r", allow_pickle=False)
-                indices = torch.linspace(0, 35, 16).round().long().tolist()
+                indices = torch.linspace(0, 35, selected_frames).round().long().tolist()
                 unique = len({hashlib.sha256(array[index].tobytes()).digest() for index in indices})
-                self.repeat_fractions[record.clip_id] = 1. - unique / 16
+                self.repeat_fractions[record.clip_id] = 1. - unique / selected_frames
             else:
                 self.repeat_fractions[record.clip_id] = None
 
@@ -130,9 +142,10 @@ class Preprocessor:
     Temporal selection is from the existing 36 uniformly cached positions; it
     is not a claim to reproduce the original manuscript's decoder timestamps.
     """
-    def __init__(self, backbone: str, augmentation: str = "horizontal_flip"):
+    def __init__(self, backbone: str, augmentation: str = "horizontal_flip", frames: int | None = None):
         from cvm.models import preprocessing_spec, preprocessing_transform
         self.spec = preprocessing_spec(backbone)
+        self.spec["frames"] = selected_frame_count(backbone, frames)
         self.transform = preprocessing_transform(backbone)
         self.augmentation = augmentation
 
@@ -267,7 +280,7 @@ def trained_head_metadata(model: Any, taxonomy: Any, config: dict[str, Any], spl
             "selection_exposure": "used_each_epoch_for_checkpoint_selection" if split == "val" else "locked_test_not_used_for_selection",
             "eval_metadata": {"backbone": config["backbone"], "preprocessing": config["preprocessing"],
                               "cache_frames": 36, "cache_size": 224, "probe": probe,
-                              "repeated_frame_fraction_basis": "pixel equality among the selected 16 RGB cached frames; no verified PTS or motion annotation",
+                              "repeated_frame_fraction_basis": f"pixel equality among the selected {config['preprocessing']['frames']} RGB cached frames; no verified PTS or motion annotation",
                               "probe_seed": config["seed"], "temporal_positions": "uniform rounded indices in 36 cached positions; not verified PTS"}}
 
 
@@ -322,7 +335,7 @@ def evaluate_model(model: Any, loader: Any, preprocess: Any, device: torch.devic
 
 
 def make_optimizer(model: Any, args: argparse.Namespace, warmup: bool) -> torch.optim.Optimizer:
-    model.configure_trainable(backbone_trainable=not warmup)
+    model.configure_trainable(backbone_trainable=not warmup and getattr(args, "backbone_training", "finetune") != "frozen")
     backbone_ids = {id(parameter) for parameter in model.backbone.parameters()}
     backbone = [parameter for parameter in model.parameters() if parameter.requires_grad and id(parameter) in backbone_ids]
     heads = [parameter for parameter in model.parameters() if parameter.requires_grad and id(parameter) not in backbone_ids]
@@ -344,10 +357,12 @@ def model_arguments(config: dict[str, Any], *, pretrained: bool) -> dict[str, An
     arguments = {"backbone": config["backbone"], "mode": config["mode"], "taxonomy": taxonomy,
                  "weights": "DEFAULT" if pretrained else None, "allow_download": config.get("allow_download", False) if pretrained else False,
                  "seed": config["seed"]}
-    if (pretrained or config["backbone"] == "videomamba_tiny16") and config.get("checkpoint"):
+    if (pretrained or config["backbone"] in ("videomamba_tiny16", "videomae_base16")) and config.get("checkpoint"):
         arguments["weights_path"] = Path(config["checkpoint"])
     if config.get("videomamba_root"):
         arguments["videomamba_root"] = Path(config["videomamba_root"])
+    if config.get("videomae_root"):
+        arguments["videomae_root"] = Path(config["videomae_root"])
     return arguments
 
 
@@ -382,10 +397,11 @@ def run_train(args: argparse.Namespace) -> None:
         raise ValueError("flat/capacity_control/aux_flat require --main-decoder flat")
     if args.mode == "hierarchy" and args.main_decoder not in ("hard", "soft"):
         raise ValueError("hierarchy requires predeclared --main-decoder hard or soft")
-    train_set = CachedProtocolDataset(protocol, "train", args.cache_root)
-    val_set = CachedProtocolDataset(protocol, "val", args.cache_root)
+    frame_count = selected_frame_count(args.backbone, getattr(args, "frames", None))
+    train_set = CachedProtocolDataset(protocol, "train", args.cache_root, frame_count)
+    val_set = CachedProtocolDataset(protocol, "val", args.cache_root, frame_count)
     seed_all(args.seed)
-    preprocess = Preprocessor(args.backbone, args.augmentation)
+    preprocess = Preprocessor(args.backbone, args.augmentation, frame_count)
     config = json_safe_arguments(args)
     if args.taxonomy_file:
         from cvm.taxonomy import Taxonomy
@@ -402,7 +418,7 @@ def run_train(args: argparse.Namespace) -> None:
                    "preprocessing": preprocess.spec, "effective_batch_size": args.batch_size * args.accum_steps,
                    "cache_contract": "existing uniform36f224 only; no decode/rebuild",
                    "checkpoint_sha256": sha256_file(args.checkpoint) if args.checkpoint else None,
-                   "checkpoint_selection": "seven-class validation Macro-F1, finetune epochs only; warmup cannot become the full-finetune result",
+                   "checkpoint_selection": "seven-class validation Macro-F1 after warmup; official backbone remains frozen" if getattr(args, "backbone_training", "finetune") == "frozen" else "seven-class validation Macro-F1, finetune epochs only; warmup cannot become the full-finetune result",
                    "test_evaluated": False})
     try:
         config["git_commit"] = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True, stderr=subprocess.DEVNULL).strip()
@@ -420,7 +436,7 @@ def run_train(args: argparse.Namespace) -> None:
     config["trained_heads"] = list(model.trained_heads)
     config["taxonomy_groups"] = [list(group) for group in taxonomy.groups]
     config["parameters_total"] = sum(parameter.numel() for parameter in model.parameters())
-    model.configure_trainable(backbone_trainable=True)
+    model.configure_trainable(backbone_trainable=getattr(args, "backbone_training", "finetune") != "frozen")
     config["parameters_trainable_finetune"] = sum(parameter.numel() for parameter in model.parameters() if parameter.requires_grad)
     config["parameter_report"] = model.parameter_report()
     args.output.mkdir(parents=True, exist_ok=False)
@@ -463,10 +479,12 @@ def run_train(args: argparse.Namespace) -> None:
                     group["lr"] = (args.backbone_lr if group["name"] == "backbone" else args.head_lr) * factor
             train_result = train_epoch(model, train_loader, optimizer, loss_fn, preprocess, device,
                                        accum_steps=args.accum_steps, amp=args.amp, scaler=scaler,
-                                       clip_grad=args.clip_grad, stop=stop, freeze_backbone=warmup,
+                                       clip_grad=args.clip_grad, stop=stop,
+                                       freeze_backbone=warmup or getattr(args, "backbone_training", "finetune") == "frozen",
                                        loss_normalizer=loss_normalizer)
             state = {"model": model.state_dict(), "optimizer": optimizer.state_dict(), "scaler": scaler.state_dict(),
-                     "config": config, "epoch": epoch + 1, "stage": "warmup" if warmup else "finetune",
+                     "config": config, "epoch": epoch + 1,
+                     "stage": "warmup" if warmup else "frozen_features" if getattr(args, "backbone_training", "finetune") == "frozen" else "finetune",
                      "interrupted": stop.requested, "best_epoch": best_epoch,
                      "rng": {"torch": torch.get_rng_state(), "numpy": np.random.get_state(), "python": random.getstate()}}
             atomic_checkpoint(args.output / "last.pt", state)
@@ -523,7 +541,7 @@ def run_train(args: argparse.Namespace) -> None:
             signal.signal(number, handler)
         result = {"status": status, "training_completed": status in ("completed", "early_stopped"),
                   "best_epoch": best_epoch, "best_val_macro_f1": best_score if best_epoch is not None else None,
-                  "best_stage": "finetune" if best_epoch is not None else None,
+                  "best_stage": ("frozen_features" if getattr(args, "backbone_training", "finetune") == "frozen" else "finetune") if best_epoch is not None else None,
                   "seconds": time.perf_counter() - started, "failure_type": failure,
                   "signal_number": stop.signal_number, "test_evaluated": False,
                   "protocol_sha256": protocol.protocol_sha256, "parameters_total": config["parameters_total"],
@@ -552,11 +570,12 @@ def run_evaluate(args: argparse.Namespace) -> None:
         if protocol.summary.get("test_history_status") != "verified_clean":
             raise RuntimeError("test history is not verified clean; it cannot be reported as independent test")
     device = require_device(args.device, args.amp)
-    dataset = CachedProtocolDataset(protocol, args.split, args.cache_root)
+    frame_count = selected_frame_count(config["backbone"], config["preprocessing"]["frames"])
+    dataset = CachedProtocolDataset(protocol, args.split, args.cache_root, frame_count)
     model = build_model(**model_arguments(config, pretrained=False))
     model.load_state_dict(checkpoint["model"], strict=True)
     model.to(device)
-    preprocess = Preprocessor(config["backbone"], "none")
+    preprocess = Preprocessor(config["backbone"], "none", frame_count)
     if preprocess.spec != config["preprocessing"]:
         raise RuntimeError("preprocessing changed since checkpoint training")
     loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.workers, pin_memory=True)
@@ -592,10 +611,11 @@ def run_export_features(args: argparse.Namespace) -> None:
     model = build_model(**model_arguments(config, pretrained=False))
     model.load_state_dict(checkpoint["model"], strict=True)
     model.to(device).eval()
-    preprocess = Preprocessor(config["backbone"], "none")
+    frame_count = selected_frame_count(config["backbone"], config["preprocessing"]["frames"])
+    preprocess = Preprocessor(config["backbone"], "none", frame_count)
     if preprocess.spec != config["preprocessing"]:
         raise RuntimeError("preprocessing changed since training")
-    dataset = CachedProtocolDataset(protocol, "train", args.cache_root)
+    dataset = CachedProtocolDataset(protocol, "train", args.cache_root, frame_count)
     loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.workers, pin_memory=True)
     features, labels = [], []
     for batch in loader:
@@ -634,6 +654,9 @@ def parser() -> argparse.ArgumentParser:
     train.add_argument("--checkpoint", type=Path)
     train.add_argument("--allow-download", action="store_true")
     train.add_argument("--videomamba-root", type=Path)
+    train.add_argument("--videomae-root", type=Path)
+    train.add_argument("--frames", type=int, choices=(16, 32), default=16)
+    train.add_argument("--backbone-training", choices=("finetune", "frozen"), default="finetune")
     train.add_argument("--device", default="cuda")
     train.add_argument("--amp", choices=("none", "bfloat16", "float16"), default="bfloat16")
     train.add_argument("--batch-size", type=int, default=2)

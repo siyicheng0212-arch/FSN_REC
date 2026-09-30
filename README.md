@@ -9,10 +9,22 @@ taxonomies, recording-group paired bootstrap, and strict manifest/weight checks.
 It does not modify or resume previous AdaFocus/local-motion experiments.
 
 - [Research questions and experiment design](docs/cvm/EXPERIMENT_DESIGN.md)
+- [Modern baselines, comparison and ablation matrix](docs/cvm/EXPERIMENT_MATRIX.md)
 - [Literature: hierarchy and attribution](docs/cvm/literature_hierarchy.md)
 - [Literature: video and procedural benchmarks](docs/cvm/literature_video.md)
 - [Commands and environment](docs/cvm/RUNBOOK.md)
 - [Server Codex prompt](prompts/run_cvm_codex.md)
+- [Full predeclared development matrix prompt](prompts/run_cvm_full_matrix_codex.md)
+
+Modern baselines are R(2+1)D-18, MViT-V2-S, VideoMAE ViT-B16, and
+VideoMamba-Ti16. `formal` declares 13 configurations x 3 seeds = 39 training
+jobs; optional `extended` includes sampling/weight/frozen-feature sensitivities
+(57 jobs). Each stage is opt-in and dry-run by default. Post-training
+`robustness` evaluates fixed checkpoints without training. Source-holdout
+protocol derivation, aggregate comparison/ablation tables and actual CUDA
+deployment profiling have separate entry points. No medical benchmark score
+or CUDA readiness is claimed from unit tests. Stored model parameters include
+unused audit heads; active deployment and training counts are reported apart.
 
 This is research infrastructure, not an already validated new algorithm.
 Previously reused validation data cannot be relabelled as independent test.

@@ -15,7 +15,8 @@ from cvm.protocol import audit_protocol, load_protocol
 from cvm.taxonomy import CLASS_NAMES, clinical_taxonomy
 from cvm.train import (CachedProtocolDataset, StopRequest, make_scaler, parser,
                        run_train, sha256_file, train_epoch, evaluate_model)
-from cvm.run_suite import FORMAL_SEEDS, declared_configurations, execute_plan, trainer_command, generate_plan, parser as suite_parser
+from cvm.run_suite import (FORMAL_SEEDS, CORE_BACKBONES, declared_configurations, declared_contrasts,
+                          execute_plan, trainer_command, generate_plan, parser as suite_parser)
 from experiments.full_data import cache_paths, request_digest
 
 
@@ -171,7 +172,7 @@ def test_stop_request_does_not_claim_epoch_complete():
 
 def test_suite_fixed_matrix_dry_run_no_launch(tmp_path):
     assert len(declared_configurations("pilot")) == 4
-    assert len(declared_configurations("formal")) == 11
+    assert len(declared_configurations("formal")) == 13
     assert FORMAL_SEEDS == (42, 2026, 2027)
     plan = {"schema_version": "fsn-cvm-plan-1", "stage": "pilot", "jobs": [{}] * 4}
     path = tmp_path / "plan.json"
@@ -294,6 +295,151 @@ class TrainingTests(unittest.TestCase):
             self.assertEqual(plan["settings"]["class_weights"], "none")
             self.assertTrue(all(job["checkpoint_sha256"] == sha256_file(checkpoint) for job in plan["jobs"]))
             self.assertFalse((plan_path.parent / ".launch_once").exists())
+
+    def test_full_matrix_is_deduplicated_and_one_factor_sensitivities_are_declared(self):
+        expected = {"smoke": 4, "pilot": 4, "benchmark": 8, "ablation": 7,
+                    "sensitivity": 6, "representation": 4, "formal": 13, "extended": 19}
+        by_stage = {}
+        for stage, count in expected.items():
+            configurations = declared_configurations(stage)
+            identifiers = {configuration["configuration_id"] for configuration in configurations}
+            self.assertEqual(len(configurations), count)
+            self.assertEqual(len(identifiers), count)
+            by_stage[stage] = identifiers
+            for contrast in declared_contrasts(configurations):
+                self.assertIn(contrast["baseline_configuration_id"], identifiers)
+                self.assertIn(contrast["candidate_configuration_id"], identifiers)
+        self.assertEqual(by_stage["formal"], by_stage["benchmark"] | by_stage["ablation"])
+        self.assertEqual(by_stage["extended"], by_stage["formal"] | by_stage["sensitivity"] | by_stage["representation"])
+        self.assertEqual(set(CORE_BACKBONES), {"r2plus1d_18", "mvit_v2_s", "videomamba_tiny16", "videomae_base16"})
+        sensitivities = declared_configurations("sensitivity")
+        self.assertNotIn((32, "sqrt_inverse"), {(c["overrides"]["frames"], c["overrides"]["class_weights"]) for c in sensitivities})
+        contrasts = declared_contrasts(sensitivities)
+        for contrast in contrasts:
+            if contrast["comparison_kind"] == "single_factor":
+                self.assertEqual(len(contrast["varying_factors"]), 1)
+        visual = declared_configurations("formal", visual_taxonomy="/private/frozen-visual.json")
+        self.assertEqual(len(visual), 14)
+
+    def test_all_declared_training_plan_counts_and_argv_parse(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary)
+            protocol, cache_root, checkpoint = real_cached_protocol(path)
+            weights = path / "weights.json"
+            weights.write_text(json.dumps({backbone: {"checkpoint": str(checkpoint), "external_repo": str(path / "official")}
+                                          for backbone in CORE_BACKBONES}))
+            counts = {"smoke": 4, "pilot": 4, "benchmark": 24, "ablation": 21,
+                      "sensitivity": 18, "representation": 12, "formal": 39, "extended": 57}
+            for stage, count in counts.items():
+                arguments = suite_parser().parse_args(["plan", "--phase", stage, "--protocol", str(protocol),
+                                                       "--cache-root", str(cache_root), "--checkpoints", str(weights),
+                                                       "--output", str(path / stage)])
+                with patch("subprocess.check_output", return_value="test-git-commit\n"), patch("subprocess.Popen", side_effect=AssertionError("matrix planning cannot launch")):
+                    plan_path = generate_plan(arguments)
+                plan = json.loads(plan_path.read_text())
+                self.assertEqual(len(plan["jobs"]), count)
+                self.assertEqual(len({job["name"] for job in plan["jobs"]}), count)
+                self.assertEqual(plan["job_count"], count)
+                self.assertEqual({job["seed"] for job in plan["jobs"]}, {42} if stage in ("smoke", "pilot") else set(FORMAL_SEEDS))
+                for job in plan["jobs"]:
+                    command = trainer_command(plan, job, "python")
+                    parsed = parser().parse_args(command[3:])
+                    self.assertEqual(parsed.frames, job["overrides"]["frames"])
+                    self.assertEqual(parsed.class_weights, job["overrides"]["class_weights"])
+                    self.assertEqual(parsed.backbone_training, job["overrides"]["backbone_training"])
+                    self.assertIn(job["configuration_id"], job["name"])
+                    self.assertEqual(job["task_type"], "train")
+
+    def test_robustness_plan_is_same_checkpoint_validation_only(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary)
+            protocol, cache_root, checkpoint = real_cached_protocol(path)
+            weights = path / "weights.json"
+            weights.write_text(json.dumps({"r2plus1d_18": str(checkpoint)}))
+            args = suite_parser().parse_args(["plan", "--phase", "pilot", "--protocol", str(protocol),
+                                              "--cache-root", str(cache_root), "--checkpoints", str(weights),
+                                              "--output", str(path / "training")])
+            with patch("subprocess.check_output", return_value="test-commit\n"):
+                train_plan_path = generate_plan(args)
+            training = json.loads(train_plan_path.read_text())
+            for job in training["jobs"]:
+                run = Path(job["output"])
+                run.mkdir(parents=True)
+                (run / "best.pt").write_bytes(b"test probe checkpoint")
+                (run / "result.json").write_text(json.dumps({"status": "completed", "training_completed": True}))
+            arguments = suite_parser().parse_args(["plan", "--phase", "robustness", "--trained-plan", str(train_plan_path),
+                                                   "--output", str(path / "probes")])
+            with patch("subprocess.Popen", side_effect=AssertionError("probe planning cannot launch")):
+                probe_path = generate_plan(arguments)
+            probes = json.loads(probe_path.read_text())
+            self.assertEqual(probes["training_jobs"], 0)
+            self.assertFalse(probes["test_evaluated"])
+            self.assertEqual(len(probes["jobs"]), 6)  # R2 clinical flat/hierarchy, same 3 probes
+            self.assertEqual(len(probes["contrasts"]), 4)
+            for job in probes["jobs"]:
+                command = trainer_command(probes, job, "python")
+                parsed = parser().parse_args(command[3:])
+                self.assertEqual(parsed.command, "evaluate")
+                self.assertEqual(parsed.split, "val")
+                self.assertFalse(parsed.allow_test)
+                self.assertEqual(parsed.probe, job["probe"])
+                self.assertNotIn("--epochs", command)
+                self.assertEqual(job["checkpoint_sha256"], sha256_file(Path(job["checkpoint"])))
+                self.assertIn("__probe_", job["configuration_id"])
+            arguments.probes = "shuffle"
+            arguments.output = path / "bad-probes"
+            with self.assertRaises(ValueError):
+                generate_plan(arguments)
+
+    def test_explicit_execute_launches_exact_planned_count_once(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary)
+            jobs = []
+            for index in range(9):
+                jobs.append({"name": f"test-{index}", "task_type": "train", "output": str(path / "runs" / f"test-{index}"),
+                             "backbone": "r2plus1d_18", "mode": "flat", "taxonomy": "clinical", "seed": 42,
+                             "checkpoint": "/test-only/mock-pretrained.pth", "main_decoder": "flat"})
+            plan = {"schema_version": "fsn-cvm-plan-1", "stage": "formal", "gpus": ["0", "1", "2", "3"],
+                    "protocol": "/test-only/protocol.json", "cache_root": "/test-only/cache", "protocol_sha256": "a" * 64,
+                    "code_hash": "b" * 64, "settings": {}, "jobs": jobs}
+            plan_path = path / "run_plan.json"
+            plan_path.write_text(json.dumps(plan))
+            calls = []
+            class FakeProcess:
+                def __init__(self, command, **kwargs):
+                    self.pid = 1000 + len(calls)
+                    calls.append((command, kwargs["env"]["CUDA_VISIBLE_DEVICES"]))
+                def wait(self):
+                    return 0
+                def poll(self):
+                    return 0
+            with patch("cvm.run_suite.preflight"), patch("subprocess.Popen", side_effect=FakeProcess):
+                execute_plan(plan_path, python="python", execute=True)
+            self.assertEqual(len(calls), 9)
+            self.assertEqual({gpu for _, gpu in calls}, {"0", "1", "2", "3"})
+            result = json.loads((path / "launcher_result.json").read_text())
+            self.assertTrue(result["all_jobs_completed"])
+            self.assertEqual(result["training_jobs"], 9)
+            self.assertEqual(len(result["exits"]), 9)
+            with patch("cvm.run_suite.preflight"), patch("subprocess.Popen", side_effect=AssertionError("must never launch a second time")), self.assertRaises(FileExistsError):
+                execute_plan(plan_path, python="python", execute=True)
+
+    def test_missing_modern_dependency_blocks_all_jobs_before_launch(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary)
+            protocol, cache_root, checkpoint = real_cached_protocol(path)
+            weights = path / "weights.json"
+            weights.write_text(json.dumps({backbone: {"checkpoint": str(checkpoint), "external_repo": str(path / "official")}
+                                          for backbone in CORE_BACKBONES}))
+            args = suite_parser().parse_args(["plan", "--phase", "formal", "--amp", "none", "--protocol", str(protocol),
+                                              "--cache-root", str(cache_root), "--checkpoints", str(weights),
+                                              "--output", str(path / "formal")])
+            with patch("subprocess.check_output", return_value="test-commit\n"):
+                plan_path = generate_plan(args)
+            with patch.dict("os.environ", {"CUDA_VISIBLE_DEVICES": ""}), patch("torch.cuda.is_available", return_value=True), patch("torch.cuda.device_count", return_value=4), patch("cvm.models.build_model", side_effect=[toy_model(), RuntimeError("missing modern dependency")]), patch("subprocess.Popen", side_effect=AssertionError("no job may start before all dependencies pass")), self.assertRaisesRegex(RuntimeError, "missing modern dependency"):
+                execute_plan(plan_path, python="python", execute=True)
+            self.assertFalse((plan_path.parent / ".launch_once").exists())
+            self.assertFalse((plan_path.parent / "launcher_logs").exists())
 
 
 def _accumulation_test(weighted, mode):

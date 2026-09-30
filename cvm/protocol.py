@@ -466,12 +466,16 @@ def load_protocol(path: str | Path) -> FrozenProtocol:
         raise ProtocolError("frozen audit summary does not match its manifests")
     if any(summary.get(field) != actual_audit[field] for field in ("test_history_status", "test_history_scope")):
         raise ProtocolError("frozen test history metadata changed")
-    return FrozenProtocol(
+    frozen = FrozenProtocol(
         records=MappingProxyType({split: tuple(entry.record for entry in members) for split, members in entries.items()}),
         manifest_paths=MappingProxyType(manifest_paths),
         cache_splits=MappingProxyType({entry.clip_id: entry.cache_split for members in entries.values() for entry in members}),
         summary=_frozen_value(summary), protocol_sha256=_sha256(protocol_path),
     )
+    if "source_holdout" in summary:
+        from cvm.source_holdout import validate_source_holdout_protocol
+        validate_source_holdout_protocol(protocol_path, frozen)
+    return frozen
 
 
 load_and_audit = load_protocol

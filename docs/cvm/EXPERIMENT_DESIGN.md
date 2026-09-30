@@ -77,9 +77,9 @@ soft 解码选最大 $p_H(y|x)$；hard 解码先选最大组再在该组内选�
 
 ## 6. Backbone 和公平性
 
-实现中的最小集合：R(2+1)D-18（CNN）、MViT-V2-S（Transformer）、VideoMamba-Ti（ECCV 2024，较新架构）。旧稿其他 backbone 结果只有在版本、划分与设置可核实时才能作为既有结果；不可拼接不同协议。
+主集合：R(2+1)D-18（CNN）、MViT-V2-S（多尺度Transformer）、VideoMAE ViT-B（自监督视频表征）、VideoMamba-Ti（ECCV 2024，状态空间架构）。四主干都真实训练flat/hierarchy，不仅列在文献中。具体比较、消融和预算见 [EXPERIMENT_MATRIX.md](EXPERIMENT_MATRIX.md)。旧稿其他 backbone 结果只有在版本、划分与设置可核实时才能作为既有结果；不可拼接不同协议。
 
-每个 backbone 内各模式必须使用相同 checkpoint、主干初值、输入帧/空间变换、优化器、有效 batch、训练/验证次数和选择指标。允许不同架构使用原生输入：三种架构均为 16 帧，共用同一来源 clip/cache 和相同时间索引；R2+1D 官方权重使用 112×112 crop，MViT/VideoMamba 为 224×224。记录分辨率、帧数、FLOPs/参数/显存/耗时。**同帧数不等于同算力**，因空间分辨率与结构不同，不强行宣称整体预算严格相同。若需要对应旧稿，可预注册 R2+1D 32 帧敏感性分析，不能把它混入本轮 16 帧主表。
+每个 backbone 内各模式必须使用相同 checkpoint、主干初值、输入帧/空间变换、优化器、有效 batch、训练/验证次数和选择指标。允许不同架构使用原生输入：四种架构均为 16 帧，共用同一来源 clip/cache 和相同时间索引；R2+1D 官方权重使用 112×112 crop，其他三种为224×224。记录分辨率、帧数、参数/显存/耗时和真实推理延迟；FLOPs未测时不得编造。**同帧数不等于同算力**。代码另提供R2+1D 32帧、类别权重和冻结特征敏感性，单列，不能把它混入本轮16帧主表。
 
 优先 Kinetics-400 checkpoint，公开具体 variant、预训练与微调路线、SHA。训练器不把随机初始化冒作预训练，也不在缺少权重时静默回退。VideoMamba 依赖官方版本的定制 CUDA 扩展，必须先真实 GPU 前后向与 checkpoint 完整载入核验；CPU mock 通过不等于它可在服务器训练。
 
@@ -95,11 +95,11 @@ soft 解码选最大 $p_H(y|x)$；hard 解码先选最大组再在该组内选�
 
 阶段 B：seed 42 的 R2+1D 四个模式，一轮和完整 dev 运行。目的为实现与可行性核验，不能以一次涨点宣布方法。硬/软/oracle 来自同一 hierarchy checkpoint。
 
-阶段 C：主表冻结后执行 seeds `42/2026/2027`。最小主实验包括三个 backbone 的 flat/hierarchy，R2+1D 的 capacity/aux，以及三套固定 singleton 的随机 hierarchy，共 11 配置 × 3 seeds = 33 次训练。训练视觉 taxonomy 为第 12 配置，资源不足可列预先声明的扩展而不是挑结果。**这不要求自动启动 33 个任务**；suite 默认为生成 dry-run 计划，正式执行需要指定冻结 phase。旧 motion 的取消 seed/wave 永远不恢复。
+阶段 C：主表冻结后执行 seeds `42/2026/2027`。四个backbone的flat/hierarchy，R2+1D的capacity/aux，以及三套固定singleton随机hierarchy，共13配置×3seeds=39次训练，`--stage formal`去重生成。`extended`显式加入采样、类权重和frozen对照为19配置×3=57次；visual显式增加1配置×3。**不自动启动39/57任务**；suite默认dry-run。`benchmark/ablation/sensitivity/representation`用于查看对应子矩阵，不应全部重复运行共享配置。旧motion的取消seed/wave永远不恢复。
 
 如果算力不够，先删掉明确标注的扩展，不通过删掉不利 seed/随机分组压缩实验。主要论文结论需要主要对照完成；截至 deadline 只做出 seed42 开发结果，应降低结论或延期，不伪造 multi-seed。
 
-阶段 D：冻结方法列表、模型与 manifest SHA，统一独立 test，生成去身份聚合报告；报告所有正式 seed，不选最好的一个。服务器目前关闭，本提交不会在服务器启动任何任务。
+阶段 D：固定checkpoint完成`robustness` none/static/shuffle推理，冻结方法列表、模型与manifest SHA，再统一独立test并生成去身份聚合；所有正式seed都报告。来源隔离由`cvm.source_holdout`从原clean test派生，train/val删除选中来源，不把旧train/val提升test；缺类/未知历史直接报告不足。服务器目前关闭，本提交不会在服务器启动任何任务。
 
 ## 8. 指标、归因与统计
 
@@ -120,7 +120,7 @@ $$P(\hat y\ne y)=P(\hat g\ne g(y))+P(\hat g=g(y),\hat y\ne y).$$
 ## 9. 论文中必须有的表和图
 
 1. 数据表：版本变化、独立录制组/来源数、各类与短 clip/重复率统计、身份可核验比例、每 split 交叉审查。
-2. 主表：三个 backbone flat/hierarchy soft/hard，各 seed 与 mean±SD、七类与五类 F1、资源。
+2. 主表：四个backbone flat/hierarchy soft/hard，各seed与mean±SD、七类与五类F1、资源。
 3. 控制表：clinical/random3/visual、capacity/aux；预注册全部列出。
 4. 路由表：实际 coarse、flat mapped/aggregated、两侧 oracle、跨组/组内错误分解。
 5. 稳健性表：来源、时长、重复率、static/shuffle 诊断；外部测试存在时单列。
