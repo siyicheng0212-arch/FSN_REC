@@ -15,6 +15,7 @@ from torch.utils.data import DataLoader
 
 from .data import RelationDataset, audit_edges, load_edges, load_feature_index, sha256_file
 from .network import RelationConfig, RelationNet
+from .protocol import edge_label_policy, validate_source_artifacts
 
 
 def _write(path, value):
@@ -71,11 +72,17 @@ def train(args):
         raise RuntimeError("CUDA requested but unavailable")
     index = load_feature_index(args.index)
     edges = load_edges(args.edges, index)
+    label_policy = edge_label_policy(edges)
+    if label_policy == "source_rule_v1" and not args.source_protocol_dir:
+        raise ValueError("source-policy labels require --source-protocol-dir")
+    source_audit = validate_source_artifacts(args.source_protocol_dir, index, args.edges) if args.source_protocol_dir else None
     audit = audit_edges(edges)
     if not audit["train"]["C"] or not audit["train"]["D"]:
         raise ValueError("R training requires both human-defined C and D edges")
     if not audit["val"]["C"] or not audit["val"]["D"]:
         raise ValueError("R validation requires both C and D edges")
+    positive_weight = audit["train"]["D"] / audit["train"]["C"] if args.balance_loss == "train_ratio" else 1.
+    loss_weight = torch.tensor(positive_weight, device=device)
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -89,16 +96,22 @@ def train(args):
     val_loader = DataLoader(RelationDataset(index, edges, "val"), batch_size=args.batch_size)
     unknown_loader = DataLoader(RelationDataset(index, edges, "val", statuses=("U",)), batch_size=args.batch_size)
     protocol = {"index_sha256": sha256_file(args.index), "edges_sha256": sha256_file(args.edges),
+                "label_policy": label_policy,
+                "source_confounding_possible": label_policy == "source_rule_v1",
                 "checkpoint_sha256": index.checkpoint_sha256, "config": asdict(config),
                 "edge_counts": audit, "seed": args.seed, "arguments": vars(args),
                 "position_basis": "cache_index_fraction_not_verified_pts",
                 "R_parameters": sum(value.numel() for value in model.parameters()),
                 "optimizer": "AdamW", "weight_decay": .01,
+                "balance_loss": args.balance_loss, "train_only_positive_weight": positive_weight,
                 "selection": "val C/D BCE", "U_policy": "excluded from BCE; activation audit only",
                 "threshold_is_calibrated": False, "torch_version": str(torch.__version__),
                 "unhashed_feature_count": sum("feature_sha256" not in row for row in index.clips.values()),
                 "source_sha256": {name: sha256_file(Path(__file__).resolve().parent / name)
                                   for name in ("network.py", "data.py", "train.py")}}
+    if source_audit:
+        protocol.update(data_protocol=source_audit["data_protocol"],
+                        source_audit_sha256=sha256_file(Path(args.source_protocol_dir) / "audit.json"))
     output.mkdir(parents=True, exist_ok=False)
     _write(output / "protocol.json", protocol)
     history, best, stale, start = [], float("inf"), 0, time.monotonic()
@@ -110,7 +123,7 @@ def train(args):
             if bool(((target != 0) & (target != 1)).any()):
                 raise ValueError("unknown targets must never enter supervised BCE")
             optimizer.zero_grad(set_to_none=True)
-            loss = F.binary_cross_entropy_with_logits(model(left, right), target)
+            loss = F.binary_cross_entropy_with_logits(model(left, right), target, pos_weight=loss_weight)
             if not torch.isfinite(loss):
                 raise RuntimeError("nonfinite R training loss")
             loss.backward()
@@ -149,6 +162,8 @@ def parser():
     for name in ("index", "edges", "output"):
         result.add_argument(f"--{name}", required=True)
     result.add_argument("--mode", choices=("mlp", "dual"), default="dual")
+    result.add_argument("--source-protocol-dir")
+    result.add_argument("--balance-loss", choices=("none", "train_ratio"), default="none")
     result.add_argument("--device", default="cpu")
     for name, default in (("epochs", 30), ("batch-size", 16), ("patience", 5), ("seed", 42),
                           ("dim", 64), ("heads", 4), ("endpoint-tokens", 2)):

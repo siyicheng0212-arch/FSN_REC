@@ -1,8 +1,9 @@
-"""Audited offline visual evidence and human-defined relation annotations.
+"""Audited offline evidence and explicit relation-label policies.
 
 C = trusted forward process connection; D = no trusted connection; U = unknown.
 U is excluded from supervised BCE rather than being silently relabeled D.
-No annotation is inferred from source identity or the seven action labels.
+The source builder explicitly generates source_rule_v1 labels under the user's
+declared policy. This loader never infers labels from action equality.
 """
 
 import hashlib
@@ -172,6 +173,10 @@ def load_edges(path, index):
             raise ValueError("edge status must be C, D or U")
         if not isinstance(row.get("split"), str) or row["split"] not in {"train", "val"}:
             raise ValueError("edge split must be train or val")
+        if row.get("label_origin") == "source_rule_v1":
+            kind = row.get("source_kind")
+            if kind not in {"clinical", "network"} or row["status"] != {"clinical": "C", "network": "D"}[kind]:
+                raise ValueError("source-policy label disagrees with its declared source kind")
         endpoints = [_text(row, key) for key in ("left_clip_id", "right_clip_id")]
         if tuple(endpoints) in pairs:
             raise ValueError("duplicate directed pair; consolidate annotation before training")

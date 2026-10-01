@@ -12,6 +12,51 @@ POSITION_BASIS = "cache_index_fraction_not_verified_pts"
 EVIDENCE_KEYS = ("global_tokens", "local_tokens", "global_positions", "local_positions")
 
 
+def validate_original_checkpoint_protocol(checkpoint):
+    """Require saved evidence of the exact full-data training protocol.
+
+    Canonical historical ``train_adafocus`` checkpoints have an integer epoch
+    for finetuning and a string such as ``head_warmup_3`` for head warmup, but
+    omit ``phase``. The newer aligned trainer additionally saves ``phase``.
+    A saved finetuning epoch establishes that epoch's completion, not that an
+    entire launcher or experiment suite has completed.
+    """
+    from experiments.aligned_protocol import validate_manifest_protocol
+
+    if not isinstance(checkpoint, dict):
+        raise ValueError("Original checkpoint must contain a saved training protocol")
+    audit = checkpoint.get("split_audit")
+    if not isinstance(audit, dict):
+        raise ValueError(
+            "formal source-policy run requires Original best.pt with saved "
+            "split_audit counts and manifest_sha256 for train7372/val823; "
+            "locate the matching full-protocol Original checkpoint, do not "
+            "invent its training provenance"
+        )
+    counts, hashes = audit.get("counts"), audit.get("manifest_sha256")
+    if (not isinstance(counts, dict) or not isinstance(hashes, dict)
+            or any(type(value) is not int for value in counts.values())):
+        raise ValueError("Original split_audit requires integer counts and manifest_sha256 mappings")
+    try:
+        validate_manifest_protocol(counts, hashes)
+    except RuntimeError as error:
+        raise ValueError(
+            "Original checkpoint was not trained under the fixed full "
+            "train7372/val823 protocol; locate the matching Original best.pt: "
+            + str(error)
+        ) from error
+    if "phase" in checkpoint and checkpoint["phase"] != "finetune":
+        raise ValueError("formal source-policy A must be a finetune checkpoint, not head/module warmup")
+    epoch = checkpoint.get("epoch")
+    if type(epoch) is not int or epoch < 1:
+        raise ValueError(
+            "formal source-policy A requires a saved positive integer finetune "
+            "epoch; warmup-only or provenance-incomplete checkpoints are unsupported"
+        )
+    return {"counts": dict(counts), "manifest_sha256": dict(hashes),
+            "epoch": epoch, "phase": checkpoint.get("phase", "historical_integer_finetune_epoch")}
+
+
 class FrozenOriginalEvidence(nn.Module):
     def __init__(self, visual: nn.Module):
         super().__init__()
@@ -90,10 +135,12 @@ class FrozenOriginalEvidence(nn.Module):
         return evidence
 
 
-def load_original(checkpoint_path, device="cpu"):
+def load_original(checkpoint_path, device="cpu", *, require_full_protocol=False):
     """Strictly load a trusted, finetuned seven-class Original best.pt.
 
     This is not the official SSv2 initializer: no head or shared weight is reset.
+    Formal source-policy calls additionally require exact saved full-data
+    manifest provenance; the default retains legacy prototype compatibility.
     """
     from experiments.model_wrappers import AdaFocusFSN
 
@@ -104,6 +151,8 @@ def load_original(checkpoint_path, device="cpu"):
         checkpoint = torch.load(Path(checkpoint_path), map_location="cpu", weights_only=True)
     if not isinstance(checkpoint, dict) or not isinstance(checkpoint.get("model"), dict):
         raise ValueError("expected a finetuned checkpoint containing model state")
+    if require_full_protocol:
+        validate_original_checkpoint_protocol(checkpoint)
     state = checkpoint["model"]
     saved_args = checkpoint.get("args", {})
     if not isinstance(saved_args, dict) or saved_args.get("variant", "original") != "original":

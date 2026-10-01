@@ -54,7 +54,8 @@ def fit_transition(
     """Count directed transitions exclusively on trusted *training* edges.
 
     Each edge must declare ``split='train'`` and a ``status`` in ``C/D/U``.
-    ``C`` means a verified valid clinical relationship; only those edges count.
+    ``C`` means approved by the explicitly supplied labeling policy; only those
+    edges count. Source-policy labels are not independently verified continuity.
     C edges require distinct ``left_clip_id`` / ``right_clip_id`` entries in
     ``labels_by_id``. D/U edges do not enter the count matrix. Every non-training
     edge is rejected even if D/U, so validation annotations cannot accidentally
