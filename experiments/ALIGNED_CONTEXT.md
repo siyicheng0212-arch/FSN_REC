@@ -105,7 +105,15 @@ All seven labels and real group identifiers are required. Train/val clip and
 group intersections must be empty. The 36f224 cache is validated for every
 record. If an internal validation record is stored in the original train cache,
 the resolver records its storage split privately without rewriting either
-manifest. An existing invalid role-path cache is an error; it is not silently
+manifest. When `inner_split_role` exists, it supplies the logical train/val role
+and must match the manifest being loaded; `split` remains the original cache
+origin. Thus `split=train, inner_split_role=val` belongs to internal validation
+and reads its existing train cache. An explicit valid `cache_split` can override
+the storage origin; optional null means no override. Without `inner_split_role`,
+the legacy `split` role and read-only unique-storage fallback are retained.
+Malformed internal roles, source `test`, and train/val clip/group overlap are
+rejected. No manifest bytes, SHA or cache digest algorithm are changed.
+An existing invalid role-path cache is an error; it is not silently
 substituted. A uniquely valid alternative storage path may be used only when
 the role-path cache is absent.
 
@@ -117,7 +125,7 @@ report SHA. These files contain private server paths and stay on the server.
 
 ## Actual smoke precedes training
 
-Local validation used torch 2.8.0+cpu / torchvision .23.0+cpu: 40 new tests
+Local validation used torch 2.8.0+cpu / torchvision .23.0+cpu: 47 new tests
 and 34 affected model/training/metric regression tests passed. At full
 36/8/12/128 dimensions with a synthetic CPU batch of one, all three candidates
 matched Original at initialization and passed three native-loss steps with

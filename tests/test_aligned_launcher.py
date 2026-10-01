@@ -25,7 +25,7 @@ class AlignedLauncherTest(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.addCleanup(self.temporary.cleanup)
 
-    def manifest_fixture(self):
+    def manifest_fixture(self, inner_split_schema=False):
         directory = self.root / "manifests"
         directory.mkdir()
         for split in ("train", "val"):
@@ -35,6 +35,10 @@ class AlignedLauncherTest(unittest.TestCase):
                      "video_path": "/not-loaded/video.mp4", "clip_start_sec": 0.,
                      "clip_end_sec": 1., "clip_duration_sec": 1.}
                     for label, name in enumerate(LABEL_NAMES)]
+            if inner_split_schema:
+                for row in rows:
+                    row["split"] = "train"
+                    row["inner_split_role"] = split
             (directory / f"{split}.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows))
         hashes = {split: sha256_file(directory / f"{split}.jsonl") for split in ("train", "val")}
         return directory, hashes, {"train": 7, "val": 7}
@@ -56,7 +60,39 @@ class AlignedLauncherTest(unittest.TestCase):
         del rows[0]["group_id"]
         path.write_text("".join(json.dumps(row) + "\n" for row in rows))
         hashes["val"] = sha256_file(path)
-        with self.assertRaisesRegex(PreflightError, "real group_id"):
+        with self.assertRaisesRegex(PreflightError, "group_id"):
+            audit_manifests(directory, hashes, counts)
+
+    def test_inner_validation_role_is_logical_without_changing_manifest_sha(self):
+        directory, hashes, counts = self.manifest_fixture(inner_split_schema=True)
+        path = directory / "val.jsonl"
+        original_bytes = path.read_bytes()
+        records, summary = audit_manifests(directory, hashes, counts)
+        self.assertEqual({record.split for record in records["val"]}, {"val"})
+        self.assertEqual(summary["val"]["sha256"], hashes["val"])
+        self.assertEqual(path.read_bytes(), original_bytes)
+        self.assertEqual(sha256_file(path), hashes["val"])
+        raw = [json.loads(line) for line in path.read_text().splitlines()]
+        self.assertEqual({row["split"] for row in raw}, {"train"})
+
+    def test_wrong_inner_role_is_rejected_despite_cache_origin_split(self):
+        directory, hashes, counts = self.manifest_fixture(inner_split_schema=True)
+        path = directory / "val.jsonl"
+        rows = [json.loads(line) for line in path.read_text().splitlines()]
+        rows[0]["inner_split_role"] = "train"
+        path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+        hashes["val"] = sha256_file(path)
+        with self.assertRaisesRegex(PreflightError, "role"):
+            audit_manifests(directory, hashes, counts)
+
+    def test_inner_split_schema_does_not_allow_train_val_group_overlap(self):
+        directory, hashes, counts = self.manifest_fixture(inner_split_schema=True)
+        path = directory / "val.jsonl"
+        rows = [json.loads(line) for line in path.read_text().splitlines()]
+        rows[0]["group_id"] = "train-group-0"
+        path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+        hashes["val"] = sha256_file(path)
+        with self.assertRaisesRegex(PreflightError, "overlapping group_id"):
             audit_manifests(directory, hashes, counts)
 
     def test_modified_manifest_is_rejected_before_parsing(self):

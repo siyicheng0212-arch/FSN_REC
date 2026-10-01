@@ -43,9 +43,13 @@
    路径必须真实确认。launcher 核对历史 train6586/val786 和权重 SHA。
    七类齐全，train/val clip/group 无交叉，所有缓存36f224有效。
    val 存于原train缓存时使用只读 storage mapping；不改原清单的 split 或 SHA。
+   内部清单有 `inner_split_role` 时按它识别train/val；原`split`保留缓存来源。
+   `split=train, inner_split_role=val` 是验证样本，读取其现成train缓存。
+   使用本次修复提交中的统一解析器，不改写清单、不绕过group/标签/cache检查。
+   旧smoke失败现场保留，更新固定代码后在全新smoke位置重新检查。
    必要文件丢失则明确报告缺项；不要使用随机初始化或合成样本替代。
 3. 用确认后的 CUDA Python 运行 `OMP_NUM_THREADS=6 MKL_NUM_THREADS=6 "$FSN_PYTHON" -m unittest discover -s tests -p 'test_aligned*.py' -v`
-   （40项新模块、wrapper、trainer、数据解析、launcher单测）。核对实际源码
+   （47项新模块、wrapper、trainer、数据解析、launcher单测）。核对实际源码
    导入来自该 worktree，所有共享非分类头预训练张量完整加载；七类头和
    新模块才允许新初始化。确认四组同seed共享权重和七类头一致。
    保留 Original 原来的 detach／辅助损失策略，不能只检查最终 logits 梯度。

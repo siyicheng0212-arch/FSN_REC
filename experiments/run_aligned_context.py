@@ -82,7 +82,7 @@ def runtime_source_hashes() -> dict[str, str]:
 
 def audit_manifests(directory: Path, expected_sha: dict[str, str] = KNOWN_MANIFEST_SHA,
                     expected_counts: dict[str, int] = KNOWN_COUNTS) -> tuple[dict[str, Any], dict[str, Any]]:
-    from experiments.pilot_data import load_pilot_manifest
+    from experiments.aligned_data import load_aligned_manifest
     records, summary = {}, {}
     for split in ("train", "val"):
         path = directory / f"{split}.jsonl"
@@ -91,12 +91,10 @@ def audit_manifests(directory: Path, expected_sha: dict[str, str] = KNOWN_MANIFE
         digest = sha256_file(path)
         if digest != expected_sha[split]:
             raise PreflightError(f"{split} manifest SHA differs from the fixed internal protocol")
-        raw = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
-        if any(row.get("split") != split for row in raw):
-            raise PreflightError(f"{split} manifest has an inconsistent logical split")
-        if any(not isinstance(row.get("group_id"), str) or not row["group_id"].strip() for row in raw):
-            raise PreflightError(f"{split} is missing real group_id values; clip fallback is not sufficient")
-        values = load_pilot_manifest(path)
+        try:
+            values, _raw = load_aligned_manifest(path, split)
+        except (ValueError, RuntimeError, OSError) as exc:
+            raise PreflightError(f"Invalid {split} manifest role or group/clip metadata: {exc}") from exc
         if len(values) != expected_counts[split]:
             raise PreflightError(f"{split} count differs from the fixed internal protocol")
         ids = [record.clip_id for record in values]
@@ -118,7 +116,7 @@ def audit_manifests(directory: Path, expected_sha: dict[str, str] = KNOWN_MANIFE
 
 
 def audit_cache(records: dict[str, Any], cache_root: Path, manifest_dir: Path) -> dict[str, Any]:
-    from experiments.aligned_data import resolve_cache_record
+    from experiments.aligned_data import cache_split_hint, resolve_cache_record
     from experiments.full_data import cache_paths
     if not cache_root.is_dir():
         raise PreflightError("Missing existing cache; this launcher never decodes or rebuilds data")
@@ -128,7 +126,7 @@ def audit_cache(records: dict[str, Any], cache_root: Path, manifest_dir: Path) -
             encoding="utf-8").splitlines() if line.strip()]
         for record, row in zip(records[split], raw):
             try:
-                storage = resolve_cache_record(record, cache_root, 36, 224, row.get("cache_split"))
+                storage = resolve_cache_record(record, cache_root, 36, 224, cache_split_hint(row))
             except (ValueError, RuntimeError, OSError) as exc:
                 raise PreflightError(f"Invalid/missing cache in {split}; preserve the original inputs") from exc
             array, metadata = cache_paths(cache_root, storage)

@@ -16,12 +16,12 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from experiments.aligned_data import ResolvedFullClipDataset, mapping_sha256
+from experiments.aligned_data import ResolvedFullClipDataset, load_aligned_manifest, mapping_sha256
 from experiments.audit_local_motion import _rng_state as _torch_rng_state, _restore_rng as _restore_torch_rng
 from experiments.audit_local_motion import json_diagnostics, prediction_effect
 from experiments.metrics import compute_classification_metrics
 from experiments.model_wrappers import AdaFocusFSN, load_official_adafocus_checkpoint, load_shared_adafocus_weights
-from experiments.train_adafocus import seed_all, sha256_file, validate_splits, make_class_weights, make_optimizer
+from experiments.train_adafocus import seed_all, sha256_file, make_class_weights, make_optimizer
 
 ROOT = Path(__file__).resolve().parents[1]
 VARIANTS = {"original": "none", "context_plain": "plain", "context_aligned": "aligned",
@@ -244,16 +244,20 @@ def paired_audit(model, loader, device, seed, intervention):
 
 
 def make_datasets(args):
+    records, raw_rows = {}, {}
     for split in ("train", "val"):
-        raw = [json.loads(line) for line in (args.manifest_dir/f"{split}.jsonl").read_text().splitlines() if line.strip()]
-        if not raw or any(row.get("split") != split for row in raw):
-            raise RuntimeError(f"manifest role mismatch for {split}")
-        if any(not isinstance(row.get("group_id"), str) or not row["group_id"].strip() for row in raw):
-            raise RuntimeError("explicit recording group_id required; clip fallback is insufficient")
-    audit = validate_splits(args.manifest_dir, include_test=False)
+        records[split], raw_rows[split] = load_aligned_manifest(args.manifest_dir/f"{split}.jsonl", split)
+    for field in ("clip_id", "group_id"):
+        if {getattr(row, field) for row in records["train"]} & {getattr(row, field) for row in records["val"]}:
+            raise RuntimeError(f"split leakage between train and val: {field}")
+    audit = {"counts": {split: len(rows) for split, rows in records.items()},
+             "manifest_sha256": {split: sha256_file(args.manifest_dir/f"{split}.jsonl") for split in records},
+             "class_counts": {split: dict(sorted(Counter(row.label_id for row in rows).items())) for split, rows in records.items()},
+             "role_policy": "inner_split_role when present; otherwise split; source/cache split unchanged",
+             "source_split_counts": {split: dict(Counter(row["split"] for row in rows)) for split, rows in raw_rows.items()}}
     if any(set(map(int, counts)) != set(range(7)) for counts in audit["class_counts"].values()):
         raise RuntimeError("all seven labels required in both splits")
-    datasets = {split: ResolvedFullClipDataset(args.manifest_dir/f"{split}.jsonl", args.cache_dir)
+    datasets = {split: ResolvedFullClipDataset(args.manifest_dir/f"{split}.jsonl", args.cache_dir, expected_split=split)
                 for split in ("train", "val")}
     mapping = datasets["train"].mapping + datasets["val"].mapping
     audit["cache_mapping_sha256"] = mapping_sha256(mapping)
