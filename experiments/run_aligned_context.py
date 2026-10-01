@@ -1,4 +1,4 @@
-"""Plan and launch the fixed, independent three-GPU aligned-context experiment.
+"""Plan and launch the fixed, independent four-GPU aligned-context experiment.
 
 The default invocation performs read-only input checks and prints a plan.  A
 formal run additionally needs --execute and a current, successful CUDA smoke
@@ -23,7 +23,7 @@ import time
 from typing import Any, Callable
 
 VARIANTS = ("original", "context_plain", "context_aligned", "local_capacity")
-QUEUES = {0: ("original", "local_capacity"), 1: ("context_plain",), 2: ("context_aligned",)}
+QUEUES = {0: ("original",), 1: ("context_plain",), 2: ("context_aligned",), 3: ("local_capacity",)}
 KNOWN_MANIFEST_SHA = {
     "train": "f0fc0ace561cd59c471c86d6ec674144de0d5ede6acf447a5a021787538ebf0a",
     "val": "d6449196c3798a233a593db19da9045c92e02ba62bb6fa5a55d41bf118ee6580",
@@ -209,7 +209,7 @@ def validate_smoke_report(path: Path, plan: dict[str, Any]) -> dict[str, Any]:
         row = report.get("variants", {}).get(variant, {})
         losses = row.get("losses", [])
         difference = row.get("initial_max_abs_logit_diff")
-        expected_device = {"original": 0, "context_plain": 1, "context_aligned": 2, "local_capacity": 0}[variant]
+        expected_device = {"original": 0, "context_plain": 1, "context_aligned": 2, "local_capacity": 3}[variant]
         if (row.get("passed") is not True or row.get("steps") != 3 or len(losses) != 3
                 or any(not isinstance(value, (int, float)) or not math.isfinite(value) for value in losses)
                 or not isinstance(difference, (int, float)) or not math.isfinite(difference)
@@ -235,12 +235,12 @@ def validate_smoke_report(path: Path, plan: dict[str, Any]) -> dict[str, Any]:
 
 
 def gpu_preflight(python: str) -> dict[str, Any]:
-    # This process ends before training starts.  All three selected cards must
+    # This process ends before training starts.  All four selected cards must
     # exist, support bf16, and actually be RTX 3090s.
     code = """import json, torch
-assert torch.cuda.device_count() == 3, 'Expected exactly three visible CUDA GPUs'
+assert torch.cuda.device_count() == 4, 'Expected exactly four visible CUDA GPUs'
 rows=[]
-for i in range(3):
+for i in range(4):
     torch.cuda.set_device(i)
     p=torch.cuda.get_device_properties(i)
     assert '3090' in p.name, 'Expected RTX3090'
@@ -248,15 +248,15 @@ for i in range(3):
     rows.append({'index':i,'name':p.name,'memory_bytes':p.total_memory})
 print(json.dumps({'torch':torch.__version__,'cuda':torch.version.cuda,'gpus':rows}))
 """
-    env = dict(os.environ, CUDA_VISIBLE_DEVICES="0,1,2")
+    env = dict(os.environ, CUDA_VISIBLE_DEVICES="0,1,2,3")
     try:
         hardware = json.loads(subprocess.check_output([python, "-c", code], env=env, text=True))
         devices = subprocess.check_output(["nvidia-smi", "--query-gpu=index,uuid",
                                            "--format=csv,noheader,nounits"], text=True)
         selected = {line.split(",", 1)[1].strip() for line in devices.splitlines()
-                    if line.split(",", 1)[0].strip() in {"0", "1", "2"}}
-        if len(selected) != 3:
-            raise PreflightError("Cannot identify all three physical GPU UUIDs")
+                    if line.split(",", 1)[0].strip() in {"0", "1", "2", "3"}}
+        if len(selected) != 4:
+            raise PreflightError("Cannot identify all four physical GPU UUIDs")
         processes = subprocess.check_output(["nvidia-smi", "--query-compute-apps=pid,gpu_uuid",
                                              "--format=csv,noheader,nounits"], text=True)
         if any(line.split(",", 1)[1].strip() in selected for line in processes.splitlines() if "," in line):
@@ -305,7 +305,7 @@ def run_queues(plan: dict[str, Any], repo: Path, output: Path,
                source_getter: Callable[[], dict[str, str]] = runtime_source_hashes,
                state_getter: Callable[[Path], dict[str, Any]] = repository_state,
                popen: Callable[..., Any] = subprocess.Popen) -> dict[str, Any]:
-    """Run each GPU's queue in order, never following a failed predecessor."""
+    """Run one independent job on each GPU; a failed job does not stop others."""
     cancelled = threading.Event()
     lock = threading.Lock()
     children: dict[int, Any] = {}
@@ -318,16 +318,14 @@ def run_queues(plan: dict[str, Any], repo: Path, output: Path,
                 handle.write(line + "\n")
 
     def queue(gpu: int, variants: tuple[str, ...]) -> None:
-        predecessor_ok = True
         for variant in variants:
-            if cancelled.is_set() or not predecessor_ok:
-                outcomes[variant] = {"gpu": gpu, "status": "skipped_predecessor_or_cancellation"}
+            if cancelled.is_set():
+                outcomes[variant] = {"gpu": gpu, "status": "skipped_cancellation"}
                 append("exit_codes.tsv", f"{variant}\t{gpu}\t-\t-\tskipped\t{time.time()}")
                 continue
             state = state_getter(repo)
             if (not state["clean"] or state["commit"] != plan["repository"]["commit"]
                     or source_getter() != plan["source_sha256"]):
-                predecessor_ok = False
                 outcomes[variant] = {"gpu": gpu, "status": "source_changed_before_launch"}
                 append("exit_codes.tsv", f"{variant}\t{gpu}\t-\t-\tsource_changed\t{time.time()}")
                 continue
@@ -343,14 +341,13 @@ def run_queues(plan: dict[str, Any], repo: Path, output: Path,
                     with lock:
                         children.pop(process.pid, None)
             except (OSError, subprocess.SubprocessError) as exc:
-                predecessor_ok = False
                 outcomes[variant] = {"gpu": gpu, "status": "launch_failed", "error_type": type(exc).__name__}
                 append("exit_codes.tsv", f"{variant}\t{gpu}\t-\t-\tlaunch_failed\t{time.time()}")
                 continue
             complete, reason = result_is_complete(output / variant / "seed_42", variant)
-            predecessor_ok = exit_code == 0 and complete
+            completed = exit_code == 0 and complete
             outcomes[variant] = {"gpu": gpu, "pid": process.pid, "exit_code": exit_code,
-                                 "status": "complete" if predecessor_ok else reason if exit_code == 0 else "process_failed"}
+                                 "status": "complete" if completed else reason if exit_code == 0 else "process_failed"}
             append("exit_codes.tsv", f"{variant}\t{gpu}\t{process.pid}\t{exit_code}\t{outcomes[variant]['status']}\t{time.time()}")
 
     def stop(signum: int, _frame: Any) -> None:
@@ -368,7 +365,7 @@ def run_queues(plan: dict[str, Any], repo: Path, output: Path,
         for signum in (signal.SIGINT, signal.SIGTERM):
             saved_handlers[signum] = signal.signal(signum, stop)
     try:
-        with ThreadPoolExecutor(max_workers=3) as pool:
+        with ThreadPoolExecutor(max_workers=4) as pool:
             futures = [pool.submit(queue, gpu, variants) for gpu, variants in QUEUES.items()]
             for future in futures:
                 future.result()

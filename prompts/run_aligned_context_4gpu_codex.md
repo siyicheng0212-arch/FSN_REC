@@ -1,11 +1,11 @@
-# 给三张 RTX3090 服务器上的 Codex
+# 给四张 RTX3090 服务器上的 Codex
 
 请实际验证并运行下面的新模块四组对照。用户已决定跳过冻结特征
 诊断，直接训练候选模块；不能继续启动探针或39次完整矩阵。
 
 仓库：<https://github.com/siyicheng0212-arch/FSN_REC>
 使用分支 **`codex/fsn-aligned-context`**，其中包含
-`experiments/train_aligned_context.py` 和 `scripts/run_aligned_context_3gpu.sh`。
+`experiments/train_aligned_context.py` 和 `scripts/run_aligned_context_4gpu.sh`。
 **先获取该分支真实 remote HEAD、核对本次交付提交 SHA**，再创建独立 worktree
 `$FSN_WORKTREE`。不要直接使用旧
 `codex/fsn-local-motion`，不要在主 checkout 上覆盖现有修改。
@@ -19,18 +19,21 @@
 
 这次是 Original Uni-AdaFocus-TSM 的中间层模块训练：
 
-- GPU0：`original`，成功结束并确认结果后运行 `local_capacity`。
+- GPU0：`original`。
 - GPU1：`context_plain`，普通全局／局部交互。
 - GPU2：`context_aligned`，加入取帧与裁剪几何对应约束。
+- GPU3：`local_capacity`，仅使用局部特征的等参数量对照。
 
-三张卡、三个独立队列，不是 DDP。四组从同一官方 SSv2 预训练初始化，
+四张卡、四个独立并行任务，不是 DDP。容量对照不等待Original结束。
+四组从同一官方 SSv2 预训练初始化，
 不能只给新组加载旧 Original 的七分类 best。先阅读
 `experiments/ALIGNED_CONTEXT.md`、launcher 和 trainer。
 
 1. 只读检查 `nvidia-smi`、现有训练进程、磁盘、真实 CUDA Python。
    将实际 Python 路径导出为 `FSN_PYTHON`，后续单测和启动使用同一环境。
-   三张 RTX3090 必须真实可用、支持 bf16。保留旧输出和进程；如发现任务
-   已经启动，先核对 PID／协议／结果，不能重复启动或覆盖。
+   四张 RTX3090 必须真实可用、支持 bf16。保留旧输出和进程；如发现旧三卡
+   或其他任务已经启动，先只读核对 PID／协议／结果，保留现场和状态，
+   不能重复启动、自动停掉旧任务、覆盖或直接转换正在运行的旧计划。
    绝不启动旧 v3、local_motion、appearance、context、extra_wave 或
    seed10/1217/1415，不重建缓存、不自动重训丢失的旧 Original。
 2. 输入优先复用：
@@ -50,7 +53,7 @@
 
    ```bash
    cd "$FSN_WORKTREE"
-   CUDA_VISIBLE_DEVICES=0,1,2 "$FSN_PYTHON" -u -m experiments.train_aligned_context \
+   CUDA_VISIBLE_DEVICES=0,1,2,3 "$FSN_PYTHON" -u -m experiments.train_aligned_context \
      --smoke-only \
      --manifest-dir "$FSN_MANIFEST_DIR" \
      --cache-dir "$FSN_CACHE_DIR" \
@@ -66,7 +69,7 @@
 5. 固定提交，保持隔离worktree clean，先只读生成正式计划：
 
    ```bash
-   bash scripts/run_aligned_context_3gpu.sh \
+   bash scripts/run_aligned_context_4gpu.sh \
      --manifest-dir "$FSN_MANIFEST_DIR" \
      --cache-dir "$FSN_CACHE_DIR" \
      --checkpoint "$FSN_CHECKPOINT" \
@@ -74,7 +77,7 @@
    ```
 
    正式目录必须完全不存在；不能预先mkdir这个目录。只有全数smoke通过且
-   三张卡空闲后，才在上述命令添加
+   四张卡空闲后，才在上述命令添加
    `--execute --smoke-report "$FSN_SMOKE_DIR/smoke.json"`
    并用nohup启动一次。把launcher总日志放smoke目录或另外的新日志位置，
    避免shell重定向提前创建正式输出目录。记录launcher PID和实际任务PID。
@@ -84,11 +87,12 @@
    bf16，context dim64/grid3/time_scale.25/spatial_scale1/lr_ratio1。
    不修改取帧、裁剪、划分或缓存；不使用跨clip顺序、人工框/角色，不评测test。
    OOM或NaN先保留现场报告；不偷偷改一组batch或重启。运行中不git pull、
-   不改代码、不升级环境。某队列失败停止本队列，其他正常独立队列可以结束。
-7. 启动后只读确认三个实际GPU映射及日志；首次完整epoch核对history/best。
+   不改代码、不升级环境。某任务失败保留现场，其他正常独立任务可以结束。
+7. 启动后只读确认GPU0/1/2/3四个实际映射、四个任务PID及日志；
+   首次完整epoch核对history/best。
    确认进入finetune，新模块残差和梯度有记录。监控NaN/OOM、单类塌缩、
-   进程退出、磁盘与长时间无epoch。GPU0 Original完成且结果有效后才启动
-   local_capacity，不需要用户再次批准。不能把启动成功称作训练完成。
+   进程退出、磁盘与长时间无epoch。四组各自核对进程退出码和结果文件，
+   不需要等Original结束才启动容量对照。不能把启动成功称作训练完成。
 8. 四组全部有效完成后，交付内部验证七类Macro-F1/accuracy、逐类P/R/F1/support、
    五类细动作指标、最佳轮次、训练耗时、参数和资源、扫散↔再灌注双向错误、
    来源/时长切片、其他退步类、模块梯度／残差及同checkpoint on/off改对改错。

@@ -44,7 +44,7 @@ def source_hashes():
         "train_aligned_context.py", "run_aligned_context.py", "aligned_data.py",
         "model_wrappers.py", "full_data.py", "pilot_data.py", "metrics.py",
         "train_adafocus.py", "audit_local_motion.py")]
-    files += [ROOT / "scripts/run_aligned_context_3gpu.sh"]
+    files += [ROOT / "scripts/run_aligned_context_4gpu.sh"]
     return {str(path.relative_to(ROOT)): sha256_file(path)
             for path in sorted(set(files)) if path.is_file()}
 
@@ -371,8 +371,8 @@ def run(args):
 
 
 def smoke(args):
-    if not torch.cuda.is_available() or torch.cuda.device_count()!=3:
-        raise RuntimeError("smoke requires three visible CUDA GPUs")
+    if not torch.cuda.is_available() or torch.cuda.device_count()!=4:
+        raise RuntimeError("smoke requires four visible CUDA GPUs")
     if args.smoke_report.exists():
         raise FileExistsError(args.smoke_report)
     datasets, audit = make_datasets(args)
@@ -382,12 +382,12 @@ def smoke(args):
                   {"variant", "manifest_dir", "cache_dir", "checkpoint", "output_dir", "smoke_only", "smoke_report"}},
               "checkpoint_sha256": sha256_file(args.checkpoint), "manifest_sha256": audit["manifest_sha256"],
               "cache_mapping_sha256": audit["cache_mapping_sha256"], "variants": {},
-              "gpu_names": [torch.cuda.get_device_name(i) for i in range(3)], "all_passed": False}
+              "gpu_names": [torch.cuda.get_device_name(i) for i in range(4)], "all_passed": False}
     args.smoke_report.parent.mkdir(parents=True, exist_ok=True)
     # Leave inspectable evidence even if a later variant raises or OOMs.
     with args.smoke_report.open("x") as handle:
         json.dump(report, handle, indent=2)
-    for variant, index in (("original", 0), ("context_plain", 1), ("context_aligned", 2), ("local_capacity", 0)):
+    for variant, index in (("original", 0), ("context_plain", 1), ("context_aligned", 2), ("local_capacity", 3)):
         torch.cuda.set_device(index)
         if not torch.cuda.is_bf16_supported():
             raise RuntimeError(f"GPU{index} lacks bf16 support")

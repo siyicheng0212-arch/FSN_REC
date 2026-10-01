@@ -1,4 +1,4 @@
-# Aligned global/local context: a three-GPU development experiment
+# Aligned global/local context: a four-GPU development experiment
 
 This experiment trains new encoder modules directly. It does **not** run the
 frozen-feature complementarity probes or the larger CVM backbone matrix.
@@ -9,16 +9,18 @@ against Original. There is no promise of improvement or established novelty.
 
 ## Comparisons and scheduling
 
-| GPU | First task | Next task after successful completion |
-| --- | --- | --- |
-| 0 | `original` | `local_capacity` |
-| 1 | `context_plain` | none |
-| 2 | `context_aligned` | none |
+| GPU | Independent parallel task |
+| --- | --- |
+| 0 | `original` |
+| 1 | `context_plain` |
+| 2 | `context_aligned` |
+| 3 | `local_capacity` |
 
-Each task is an independent single-GPU training run, not three-GPU DDP. The
-GPU0 queue checks Original's process exit code and actual result artifacts
-before starting the control. A failed task stops its queue; other independent
-queues may finish. No restart, continuation, multi-seed wave, test evaluation,
+Each task is an independent single-GPU training run, not four-GPU DDP. All
+four tasks start in parallel; the capacity control does not wait for Original.
+Each task's process exit code and actual result artifacts are checked. A failed
+task preserves its output; other independent tasks may finish. No restart,
+continuation, multi-seed wave, test evaluation,
 or automatic follow-up is performed.
 
 All four models start from the **same official SSv2 checkpoint**, with the same
@@ -134,11 +136,11 @@ OMP_NUM_THREADS=6 MKL_NUM_THREADS=6 "$FSN_PYTHON" -m unittest discover \
 ```
 
 Next run the dedicated smoke CLI on actual
-cached data and all three CUDA cards:
+cached data and all four CUDA cards:
 
 ```bash
 cd "$FSN_WORKTREE"
-CUDA_VISIBLE_DEVICES=0,1,2 "$FSN_PYTHON" -u -m experiments.train_aligned_context \
+CUDA_VISIBLE_DEVICES=0,1,2,3 "$FSN_PYTHON" -u -m experiments.train_aligned_context \
   --smoke-only \
   --manifest-dir "$FSN_MANIFEST_DIR" \
   --cache-dir "$FSN_CACHE_DIR" \
@@ -147,11 +149,11 @@ CUDA_VISIBLE_DEVICES=0,1,2 "$FSN_PYTHON" -u -m experiments.train_aligned_context
 ```
 
 Use a fresh smoke location. The smoke executes three real bf16 optimizer steps
-for **each** variant (queuing the fourth), checks finite losses, staged module
+for **each** variant on its assigned GPU, checks finite losses, staged module
 gradients and initialization equality against Original. Report generation is
 not itself evidence of success: all four entries must pass. Changes to runtime
 source or inputs invalidate a previous smoke report. The formal launcher also
-checks idle physical GPUs 0, 1 and 2, actual RTX3090 names and bf16 support.
+checks idle physical GPUs 0, 1, 2 and 3, actual RTX3090 names and bf16 support.
 
 This repository's local tests do not establish that private-data CUDA smoke or
 formal training has passed. Verify those on the actual server before reporting
@@ -164,7 +166,7 @@ Required paths are CLI
 arguments, not inferred silently:
 
 ```bash
-bash scripts/run_aligned_context_3gpu.sh \
+bash scripts/run_aligned_context_4gpu.sh \
   --manifest-dir "$FSN_MANIFEST_DIR" \
   --cache-dir "$FSN_CACHE_DIR" \
   --checkpoint "$FSN_CHECKPOINT" \
@@ -178,10 +180,15 @@ absent, including an empty directory. Atomic directory creation and
 `.launch_once` prevent two launchers from claiming it. Never run `git pull`,
 change code or update packages while the suite runs.
 
+If an older three-GPU suite has already started, preserve its processes,
+protocol, outputs and status. Inspect it read-only before planning anything
+else; do not automatically interrupt, duplicate or convert that running suite.
+
 Files saved at the suite root include `run_protocol.json`, `run_commit.txt`,
 `.launch_once`, `suite_result.json`, and `launcher_logs/{pids,exit_codes}.tsv`.
 Per-model output is `<suite>/<variant>/seed_42/`. `pids.tsv` stores actual child
-PIDs when queued tasks really start, rather than guessed initial PIDs. Exit 0
+PIDs when tasks really start, rather than guessed initial PIDs. Monitor all
+four GPU assignments, child processes, per-task logs and histories. Exit 0
 without valid result artifacts does not count as training completion.
 
 ## Analysis and stopping rule

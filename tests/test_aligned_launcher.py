@@ -112,7 +112,7 @@ class AlignedLauncherTest(unittest.TestCase):
                       variants={variant: {"passed": True, "steps": 3, "losses": [1., .9, .8],
                                           "initial_max_abs_logit_diff": 0.,
                                           "device_index": {"original": 0, "context_plain": 1,
-                                                           "context_aligned": 2, "local_capacity": 0}[variant],
+                                                           "context_aligned": 2, "local_capacity": 3}[variant],
                                           "gradient_checks": [{"up.weight": 1., "down.weight": 0.},
                                                               {"up.weight": 1., "down.weight": .2},
                                                               {"up.weight": 1., "down.weight": .3}]}
@@ -202,25 +202,26 @@ class AlignedLauncherTest(unittest.TestCase):
                              popen=FakeProcess)
         return summary, calls, output
 
-    def test_gpu0_capacity_runs_only_after_successful_original(self):
+    def test_four_variants_have_independent_gpu_assignments(self):
         summary, calls, _ = self.run_fake_queue()
         self.assertTrue(summary["all_complete"])
-        sequence = [variant for variant, gpu in calls if gpu == "0"]
-        self.assertEqual(sequence, ["original", "local_capacity"])
-        self.assertEqual({gpu for _, gpu in calls}, {"0", "1", "2"})
+        self.assertEqual(dict(calls), {"original": "0", "context_plain": "1",
+                                      "context_aligned": "2", "local_capacity": "3"})
 
-    def test_failure_stops_its_queue_while_other_queues_finish(self):
+    def test_original_failure_does_not_stop_independent_capacity_job(self):
         summary, calls, output = self.run_fake_queue(failure="original")
         self.assertFalse(summary["all_complete"])
-        self.assertNotIn(("local_capacity", "0"), calls)
+        self.assertIn(("local_capacity", "3"), calls)
         self.assertEqual(summary["variants"]["context_plain"]["status"], "complete")
         self.assertEqual(summary["variants"]["context_aligned"]["status"], "complete")
-        self.assertIn("skipped", (output / "launcher_logs" / "exit_codes.tsv").read_text())
+        self.assertEqual(summary["variants"]["local_capacity"]["status"], "complete")
+        self.assertIn("process_failed", (output / "launcher_logs" / "exit_codes.tsv").read_text())
 
-    def test_exit_zero_without_results_does_not_release_capacity_job(self):
+    def test_exit_zero_without_results_does_not_count_as_training_success(self):
         summary, calls, _ = self.run_fake_queue(incomplete="original")
         self.assertFalse(summary["all_complete"])
-        self.assertNotIn(("local_capacity", "0"), calls)
+        self.assertIn(("local_capacity", "3"), calls)
+        self.assertEqual(summary["variants"]["local_capacity"]["status"], "complete")
 
     def test_dirty_source_prevents_every_process_launch(self):
         summary, calls, _ = self.run_fake_queue(dirty=True)
