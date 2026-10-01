@@ -1,4 +1,4 @@
-# Aligned global/local context: a four-GPU development experiment
+# Aligned global/local context: four GPUs on the full 7,372/823 protocol
 
 This experiment trains new encoder modules directly. It does **not** run the
 frozen-feature complementarity probes or the larger CVM backbone matrix.
@@ -20,12 +20,13 @@ Each task is an independent single-GPU training run, not four-GPU DDP. All
 four tasks start in parallel; the capacity control does not wait for Original.
 Each task's process exit code and actual result artifacts are checked. A failed
 task preserves its output; other independent tasks may finish. No restart,
-continuation, multi-seed wave, test evaluation,
+continuation, multi-seed wave, independent-test evaluation,
 or automatic follow-up is performed.
 
 All four models start from the **same official SSv2 checkpoint**, with the same
-seed and seven-class head initialization. A previously finetuned Original
-checkpoint is not used to initialize only the new variants. Global sampling,
+seed and seven-class head initialization. All four are trained afresh on the
+full 7,372 training clips; none resumes an internal-split checkpoint or loads
+an internal-split seven-class best. Global sampling,
 local sampling, cropping and Original's stop-gradient classification strategy
 remain the same across variants; the existing local auxiliary classification
 loss supplies training gradients to the new local module.
@@ -67,12 +68,20 @@ warmup has fewer trainable parameters.
 
 ## Fixed protocol
 
+Data protocol identifier: **`fsn-full-7372-823-development-v1`**.
+
 Seed 42; five classifier-head warmup epochs at LR .001; at most 100 finetune
 epochs, patience 10; batch 4, accumulation 16 (effective batch 64); workers 4;
 SGD momentum .9, base LR .002, weight decay .0005; global/spatial/temporal LR
 ratios .5/.2/.2; context LR ratio 1; square-root inverse seven-class weights;
 gradient clipping 20; CUDA bf16; context dimension 64, grid 3, time scale .25,
 spatial scale 1. Input/global/local frames are 36/8/12 and patch size is 128.
+
+Every complete training epoch uses all **7,372** clips exactly once: batch 4
+gives **1,843 microbatches**, and accumulation 16 gives **116 optimizer steps**.
+The last window contains three microbatches, or **12 samples**; it must not be
+dropped or normalized as a full 64-sample window. Validation uses all **823**
+clips. Head warmup and finetune use the same full training manifest.
 
 The launcher fixes this protocol. Do not silently alter batch size or just one
 variant after an OOM. Preserve the failed run and report it. If a new protocol
@@ -86,36 +95,39 @@ Actual private filesystem paths are never included in the public repository:
 ```text
 FSN_PYTHON: verified CUDA Python executable
 FSN_WORKTREE: isolated source worktree
-FSN_MANIFEST_DIR: existing internal train/val manifest directory
+FSN_MANIFEST_DIR: existing historical full 7,372/823 train/val manifest directory
 FSN_CACHE_DIR: existing 36f224 cache directory
 FSN_CHECKPOINT: existing official SSv2 initialization file
 FSN_OUTPUT_DIR: fresh formal output outside the worktree
 FSN_SMOKE_DIR: fresh private smoke/report/launcher-log directory
 ```
 
-The launcher only accepts the existing internal protocol:
+The launcher only accepts the existing full protocol. Locate the historical
+full manifests, not an `inner_manifests` directory. No new train/val partition
+or cache generation is performed:
 
 | Input | Count | SHA256 |
 | --- | ---: | --- |
-| train manifest | 6,586 | `f0fc0ace561cd59c471c86d6ec674144de0d5ede6acf447a5a021787538ebf0a` |
-| val manifest | 786 | `d6449196c3798a233a593db19da9045c92e02ba62bb6fa5a55d41bf118ee6580` |
+| train manifest | 7,372 | `093d0adf08dc1d382c0d2e1863a2f4724cb24ebd5b3d0af070e0c76ca989f1d3` |
+| val manifest | 823 | `ad785ec18b14b63616582a143384fac649e69e27d142dfcf87c6852f9d3c6f02` |
 | official initialization | — | `2dea5c15ce23b3549aeab977774649f0ce8dcbc5637d5d1d1319efc019896fc3` |
+
+The historical full builder formed the 7,372 training list from the original
+6,571 train plus 801 val clips, and formed the 823 development-validation list
+from the original test list. Reuse these already-generated files byte for
+byte. This is not permission to repartition the data, relabel a fresh test set,
+or regenerate manifests on the server. The 823 clips are now used to select
+best checkpoints and must not be presented as an independent test.
 
 All seven labels and real group identifiers are required. Train/val clip and
 group intersections must be empty. The 36f224 cache is validated for every
-record. If an internal validation record is stored in the original train cache,
-the resolver records its storage split privately without rewriting either
-manifest. When `inner_split_role` exists, it supplies the logical train/val role
-and must match the manifest being loaded; `split` remains the original cache
-origin. Thus `split=train, inner_split_role=val` belongs to internal validation
-and reads its existing train cache. An explicit valid `cache_split` can override
-the storage origin; optional null means no override. Without `inner_split_role`,
-the legacy `split` role and read-only unique-storage fallback are retained.
-Malformed internal roles, source `test`, and train/val clip/group overlap are
-rejected. No manifest bytes, SHA or cache digest algorithm are changed.
+record. Resolve existing cache storage locations read-only and record the
+mapping privately, without rewriting logical roles or manifest bytes. The
+full manifest SHA, cache digest algorithm and input arrays stay unchanged.
 An existing invalid role-path cache is an error; it is not silently
 substituted. A uniquely valid alternative storage path may be used only when
-the role-path cache is absent.
+the role-path cache is absent. Reject the old internal-split manifests rather
+than trying to extend them into the full protocol.
 
 The protocol records the original manifest SHA, cache storage mapping SHA, and
 an inventory SHA over **all cache metadata hashes and array sizes/mtimes**.
@@ -125,8 +137,8 @@ report SHA. These files contain private server paths and stay on the server.
 
 ## Actual smoke precedes training
 
-Local validation used torch 2.8.0+cpu / torchvision .23.0+cpu: 47 new tests
-and 34 affected model/training/metric regression tests passed. At full
+All **54** relevant CPU model, training, data and launcher tests passed under
+torch 2.8.0+cpu / torchvision .23.0+cpu. At full
 36/8/12/128 dimensions with a synthetic CPU batch of one, all three candidates
 matched Original at initialization and passed three native-loss steps with
 gradient clipping 20. These checks used random initialization, not the private
@@ -191,6 +203,9 @@ change code or update packages while the suite runs.
 If an older three-GPU suite has already started, preserve its processes,
 protocol, outputs and status. Inspect it read-only before planning anything
 else; do not automatically interrupt, duplicate or convert that running suite.
+The same rule applies to any earlier internal-split or four-GPU run. The full
+protocol needs a new output location and a fresh, input-matched four-GPU smoke
+report; an old smoke or checkpoint is not reused as evidence for this run.
 
 Files saved at the suite root include `run_protocol.json`, `run_commit.txt`,
 `.launch_once`, `suite_result.json`, and `launcher_logs/{pids,exit_codes}.tsv`.
@@ -208,9 +223,11 @@ parameters/resources, source/duration slices and the two directed
 same-checkpoint module on/off effects. Distinguish the independently trained
 Original from turning off a module in a trained candidate.
 
-The same 786 internal-validation clips select checkpoints. These are
-development results, not an independent test or a direct comparison with the
-old 7,372/823 protocol. One seed or a higher score does not establish novelty,
+The same 823 development-validation clips select checkpoints. They originate
+from the historical full protocol's original test list, but checkpoint
+selection makes this a development evaluation, not an independent test.
+Do not combine it with earlier internal-split scores. One seed or a higher
+score does not establish novelty,
 a clinical mechanism or a paper conclusion. Three comparisons are needed:
 aligned vs Original, aligned vs plain interaction, and aligned vs capacity
 control. Ordinary cross-attention already has prior work; correspondence is a

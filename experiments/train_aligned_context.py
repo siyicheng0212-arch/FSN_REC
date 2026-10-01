@@ -17,6 +17,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from experiments.aligned_data import ResolvedFullClipDataset, load_aligned_manifest, mapping_sha256
+from experiments.aligned_protocol import DATA_PROTOCOL, EVALUATION_STATUS, validate_manifest_protocol
 from experiments.audit_local_motion import _rng_state as _torch_rng_state, _restore_rng as _restore_torch_rng
 from experiments.audit_local_motion import json_diagnostics, prediction_effect
 from experiments.metrics import compute_classification_metrics
@@ -41,7 +42,7 @@ def _restore_rng(state):
 def source_hashes():
     files = list((ROOT / "models/Uni-AdaFocus-TSM-FSN").rglob("*.py"))
     files += [ROOT / "experiments" / name for name in (
-        "train_aligned_context.py", "run_aligned_context.py", "aligned_data.py",
+        "train_aligned_context.py", "run_aligned_context.py", "aligned_data.py", "aligned_protocol.py",
         "model_wrappers.py", "full_data.py", "pilot_data.py", "metrics.py",
         "train_adafocus.py", "audit_local_motion.py")]
     files += [ROOT / "scripts/run_aligned_context_4gpu.sh"]
@@ -143,6 +144,8 @@ def evaluate(model, loader, device, seed):
             for i, row in enumerate(info):
                 rows.append({**row, "target": int(target[i]), "prediction": int(scores[i].argmax()),
                              "logits": scores[i].tolist()})
+        if len(rows) != len(loader.dataset):
+            raise RuntimeError("validation did not visit every manifest clip exactly once")
         return compute_classification_metrics(torch.cat(logits), torch.cat(targets), meta), rows, time.perf_counter()-started
     finally:
         _restore_rng(saved)
@@ -197,6 +200,8 @@ def train_epoch(model, loader, optimizer, device, args, augmentation_rng):
         steps.append(n)
     if not total_samples:
         raise RuntimeError("empty training epoch")
+    if total_samples != len(loader.dataset):
+        raise RuntimeError("training epoch did not visit every manifest clip exactly once")
     return {"train_loss": (classification_sum + penalty_sum) / total_samples,
             "loss_aggregation": "sample-weighted microbatch logging; gradients use exact window weight/sample denominators",
             "train_seconds": time.perf_counter()-started, "samples_seen": total_samples,
@@ -255,13 +260,15 @@ def make_datasets(args):
              "class_counts": {split: dict(sorted(Counter(row.label_id for row in rows).items())) for split, rows in records.items()},
              "role_policy": "inner_split_role when present; otherwise split; source/cache split unchanged",
              "source_split_counts": {split: dict(Counter(row["split"] for row in rows)) for split, rows in raw_rows.items()}}
+    validate_manifest_protocol(audit["counts"], audit["manifest_sha256"])
     if any(set(map(int, counts)) != set(range(7)) for counts in audit["class_counts"].values()):
         raise RuntimeError("all seven labels required in both splits")
     datasets = {split: ResolvedFullClipDataset(args.manifest_dir/f"{split}.jsonl", args.cache_dir, expected_split=split)
                 for split in ("train", "val")}
     mapping = datasets["train"].mapping + datasets["val"].mapping
     audit["cache_mapping_sha256"] = mapping_sha256(mapping)
-    audit["evaluation_status"] = "previously used internal development validation; not independent test"
+    audit["data_protocol"] = DATA_PROTOCOL
+    audit["evaluation_status"] = EVALUATION_STATUS
     return datasets, audit
 
 
@@ -291,7 +298,7 @@ def run(args):
                             "total_parameters": sum(p.numel() for p in model.parameters()),
                             "added_parameters": 0 if module is None else sum(p.numel() for p in module.parameters())}
         write_json(out/"load_report.json", load_report)
-        write_json(out/"run_config.json", {**vars(args), "source_sha256": source_hashes(),
+        write_json(out/"run_config.json", {**vars(args), "data_protocol": DATA_PROTOCOL, "source_sha256": source_hashes(),
                   "split_audit": split_audit, "parameters": parameter_report,
                   "gradient_policy": "Original final-head detach unchanged; local auxiliary CE supervises new module"})
         history = []
@@ -354,7 +361,7 @@ def run(args):
                 result, paired = paired_audit(model, loaders["val"], device, args.seed+1000, kind)
                 audits[kind] = result; write_json(out/f"val_{kind}_audit.json", result)
                 (out/f"val_{kind}_paired.jsonl").write_text("".join(json.dumps(r, ensure_ascii=False)+"\n" for r in paired))
-        result = {"variant": args.variant, "seed": args.seed, "training_completed": True,
+        result = {"variant": args.variant, "seed": args.seed, "data_protocol": DATA_PROTOCOL, "training_completed": True,
                   "best_epoch": best_epoch, "best_val_macro_f1": best_score,
                   "best_val_metrics_reevaluated": metrics, "split_audit": split_audit,
                   "best_val_reevaluation_delta": reevaluation_delta,
@@ -381,7 +388,8 @@ def smoke(args):
         raise FileExistsError(args.smoke_report)
     datasets, audit = make_datasets(args)
     batch = next(iter(DataLoader(datasets["train"], batch_size=args.batch_size, shuffle=False)))
-    report = {"schema": "fsn-aligned-context-smoke-v1", "source_sha256": source_hashes(),
+    report = {"schema": "fsn-aligned-context-smoke-v1", "data_protocol": DATA_PROTOCOL,
+              "split_audit": audit, "source_sha256": source_hashes(),
               "configuration": {key: value for key, value in vars(args).items() if key not in
                   {"variant", "manifest_dir", "cache_dir", "checkpoint", "output_dir", "smoke_only", "smoke_report"}},
               "checkpoint_sha256": sha256_file(args.checkpoint), "manifest_sha256": audit["manifest_sha256"],

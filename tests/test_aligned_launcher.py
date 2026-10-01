@@ -11,7 +11,8 @@ import threading
 import unittest
 
 from experiments.run_aligned_context import (
-    KNOWN_CHECKPOINT_SHA, NON_CLI_PROTOCOL_FIELDS, PROTOCOL, VARIANTS, PreflightError,
+    DATA_PROTOCOL, KNOWN_CHECKPOINT_SHA, KNOWN_COUNTS, KNOWN_MANIFEST_SHA,
+    NON_CLI_PROTOCOL_FIELDS, PROTOCOL, VARIANTS, PreflightError,
     audit_manifests, build_command, claim_output, parse_args,
     run_queues, sha256_file, validate_smoke_report,
 )
@@ -102,6 +103,12 @@ class AlignedLauncherTest(unittest.TestCase):
         with self.assertRaisesRegex(PreflightError, "SHA differs"):
             audit_manifests(directory, hashes, counts)
 
+    def test_formal_manifest_count_defaults_require_restored_full_split(self):
+        directory, hashes, _ = self.manifest_fixture()
+        self.assertEqual(KNOWN_COUNTS, {"train": 7372, "val": 823})
+        with self.assertRaisesRegex(PreflightError, "count differs"):
+            audit_manifests(directory, expected_sha=hashes)
+
     def test_read_only_is_default_and_execute_requires_smoke(self):
         options = ["--manifest-dir", str(self.root), "--cache-dir", str(self.root),
                    "--checkpoint", str(self.root / "weight.pt"), "--output-dir", str(self.root / "out")]
@@ -133,16 +140,20 @@ class AlignedLauncherTest(unittest.TestCase):
 
     def plan_fixture(self, output):
         return {"repository": {"commit": "abc", "clean": True},
+                "data_protocol": DATA_PROTOCOL,
                 "source_sha256": {"trainer.py": "def"},
                 "checkpoint_sha256": KNOWN_CHECKPOINT_SHA,
-                "manifest_sha256": {"train": "trainhash", "val": "valhash"},
+                "manifest_sha256": dict(KNOWN_MANIFEST_SHA),
+                "manifests": {split: {"clips": count} for split, count in KNOWN_COUNTS.items()},
                 "cache_mapping_sha256": "cachehash",
                 "commands": {variant: ["fake-trainer", variant] for variant in VARIANTS}}
 
     def smoke_fixture(self, plan):
-        report = {key: plan[key] for key in ("source_sha256", "checkpoint_sha256",
+        report = {key: plan[key] for key in ("data_protocol", "source_sha256", "checkpoint_sha256",
                                             "manifest_sha256", "cache_mapping_sha256")}
         report.update(schema="fsn-aligned-context-smoke-v1", all_passed=True,
+                      split_audit={"data_protocol": DATA_PROTOCOL, "counts": dict(KNOWN_COUNTS),
+                                   "manifest_sha256": dict(KNOWN_MANIFEST_SHA)},
                       configuration={key: value for key, value in PROTOCOL.items()
                                      if key not in NON_CLI_PROTOCOL_FIELDS},
                       variants={variant: {"passed": True, "steps": 3, "losses": [1., .9, .8],
@@ -204,7 +215,26 @@ class AlignedLauncherTest(unittest.TestCase):
                 with self.assertRaisesRegex(PreflightError, field):
                     validate_smoke_report(path, plan)
 
-    def run_fake_queue(self, failure=None, incomplete=None, dirty=False):
+    def test_old_internal_validation_smoke_cannot_authorize_full_split_run(self):
+        plan = self.plan_fixture(self.root / "out")
+        path, report = self.smoke_fixture(plan)
+        report["data_protocol"] = "old-internal-train6586-val786"
+        path.write_text(json.dumps(report))
+        with self.assertRaisesRegex(PreflightError, "data_protocol"):
+            validate_smoke_report(path, plan)
+
+    def test_smoke_must_bind_full_counts_and_frozen_manifest_hashes(self):
+        plan = self.plan_fixture(self.root / "out")
+        for field, invalid in (("counts", {"train": 6586, "val": 786}),
+                               ("manifest_sha256", {"train": "old-inner", "val": "old-inner"})):
+            with self.subTest(field=field):
+                path, report = self.smoke_fixture(plan)
+                report["split_audit"][field] = invalid
+                path.write_text(json.dumps(report))
+                with self.assertRaisesRegex(PreflightError, "split_audit"):
+                    validate_smoke_report(path, plan)
+
+    def run_fake_queue(self, failure=None, incomplete=None, dirty=False, old_internal_result=None):
         output = self.root / "out"
         plan = self.plan_fixture(output)
         claim_output(output, plan)
@@ -230,6 +260,11 @@ class AlignedLauncherTest(unittest.TestCase):
                 (run / "history.json").write_text(json.dumps([{"phase": "finetune", "epoch": 0}]))
                 (run / "result.json").write_text(json.dumps({"variant": self.variant, "seed": 42,
                                                             "training_completed": True,
+                                                            "data_protocol": plan["data_protocol"],
+                                                            "split_audit": {
+                                                                "data_protocol": plan["data_protocol"],
+                                                                "counts": {"train": 6586, "val": 786} if self.variant == old_internal_result else dict(KNOWN_COUNTS),
+                                                                "manifest_sha256": dict(plan["manifest_sha256"])},
                                                             "best_val_macro_f1": .5, "test_metrics": None}))
                 return 0
 
@@ -263,6 +298,12 @@ class AlignedLauncherTest(unittest.TestCase):
         summary, calls, _ = self.run_fake_queue(dirty=True)
         self.assertFalse(summary["all_complete"])
         self.assertEqual(calls, [])
+
+    def test_old_internal_result_is_not_counted_as_completed_full_training(self):
+        summary, calls, _ = self.run_fake_queue(old_internal_result="original")
+        self.assertFalse(summary["all_complete"])
+        self.assertEqual(summary["variants"]["original"]["status"], "result_data_protocol_mismatch")
+        self.assertEqual(summary["variants"]["local_capacity"]["status"], "complete")
 
 
 if __name__ == "__main__":

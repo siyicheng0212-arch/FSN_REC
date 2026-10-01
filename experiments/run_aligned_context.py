@@ -22,13 +22,13 @@ import threading
 import time
 from typing import Any, Callable
 
+from experiments.aligned_protocol import DATA_PROTOCOL, EXPECTED_COUNTS, EXPECTED_MANIFEST_SHA
+
 VARIANTS = ("original", "context_plain", "context_aligned", "local_capacity")
 QUEUES = {0: ("original",), 1: ("context_plain",), 2: ("context_aligned",), 3: ("local_capacity",)}
-KNOWN_MANIFEST_SHA = {
-    "train": "f0fc0ace561cd59c471c86d6ec674144de0d5ede6acf447a5a021787538ebf0a",
-    "val": "d6449196c3798a233a593db19da9045c92e02ba62bb6fa5a55d41bf118ee6580",
-}
-KNOWN_COUNTS = {"train": 6586, "val": 786}
+# Compatibility aliases use the same shared full-split protocol as the trainer.
+KNOWN_MANIFEST_SHA = EXPECTED_MANIFEST_SHA
+KNOWN_COUNTS = EXPECTED_COUNTS
 KNOWN_CHECKPOINT_SHA = "2dea5c15ce23b3549aeab977774649f0ce8dcbc5637d5d1d1319efc019896fc3"
 PROTOCOL = {
     "seed": 42, "epochs": 100, "patience": 10, "batch_size": 4,
@@ -90,13 +90,13 @@ def audit_manifests(directory: Path, expected_sha: dict[str, str] = KNOWN_MANIFE
             raise PreflightError(f"Missing {split} manifest; do not rebuild it automatically")
         digest = sha256_file(path)
         if digest != expected_sha[split]:
-            raise PreflightError(f"{split} manifest SHA differs from the fixed internal protocol")
+            raise PreflightError(f"{split} manifest SHA differs from the restored original full train/val protocol")
         try:
             values, _raw = load_aligned_manifest(path, split)
         except (ValueError, RuntimeError, OSError) as exc:
             raise PreflightError(f"Invalid {split} manifest role or group/clip metadata: {exc}") from exc
         if len(values) != expected_counts[split]:
-            raise PreflightError(f"{split} count differs from the fixed internal protocol")
+            raise PreflightError(f"{split} count differs from the restored original full train/val protocol")
         ids = [record.clip_id for record in values]
         if len(set(ids)) != len(ids):
             raise PreflightError(f"Duplicate clip_id within {split}")
@@ -175,6 +175,7 @@ def prepare_plan(args: argparse.Namespace, repo: Path) -> dict[str, Any]:
     if args.execute and not state["clean"]:
         raise PreflightError("Execution requires a clean, committed isolated worktree")
     return {"schema": "fsn-aligned-context-suite-v1", "created_unix": time.time(),
+            "data_protocol": DATA_PROTOCOL,
             "repository": state, "source_sha256": source,
             "paths": {name: str(getattr(args, name)) for name in
                       ("manifest_dir", "cache_dir", "checkpoint", "output_dir", "python")},
@@ -183,7 +184,7 @@ def prepare_plan(args: argparse.Namespace, repo: Path) -> dict[str, Any]:
             "training": dict(PROTOCOL), "queues": {str(gpu): list(queue) for gpu, queue in QUEUES.items()},
             "commands": {variant: build_command(variant, args) for variant in VARIANTS},
             "comparison": "independent single-GPU training from the same official initialization; not DDP",
-            "evaluation": "internal development validation only; no test evaluation",
+            "evaluation": "restored original train7372/val823 validation for model selection; not independent test; no test evaluation",
             "resume": False, "automatic_extra_seeds": False}
 
 
@@ -194,6 +195,13 @@ def validate_smoke_report(path: Path, plan: dict[str, Any]) -> dict[str, Any]:
         raise PreflightError("Missing or unreadable actual CUDA three-step smoke report") from exc
     if report.get("schema") != "fsn-aligned-context-smoke-v1" or report.get("all_passed") is not True:
         raise PreflightError("CUDA smoke report does not establish successful checks")
+    if plan.get("data_protocol") != DATA_PROTOCOL or report.get("data_protocol") != DATA_PROTOCOL:
+        raise PreflightError("CUDA smoke data_protocol differs from the restored full train/val protocol")
+    split_audit = report.get("split_audit")
+    if (not isinstance(split_audit, dict) or split_audit.get("counts") != EXPECTED_COUNTS
+            or split_audit.get("manifest_sha256") != EXPECTED_MANIFEST_SHA
+            or split_audit.get("data_protocol") != DATA_PROTOCOL):
+        raise PreflightError("CUDA smoke split_audit does not match the frozen full train/val protocol")
     for field in ("source_sha256", "checkpoint_sha256", "manifest_sha256", "cache_mapping_sha256"):
         if report.get(field) != plan.get(field):
             raise PreflightError(f"Stale CUDA smoke report: {field} differs from the formal run")
@@ -280,7 +288,10 @@ def claim_output(output: Path, plan: dict[str, Any]) -> None:
         "variant\tgpu\tpid\texit_code\tstatus\tfinished_unix\n")
 
 
-def result_is_complete(run_dir: Path, variant: str) -> tuple[bool, str]:
+def result_is_complete(run_dir: Path, variant: str,
+                       expected_manifest_sha: dict[str, str] = KNOWN_MANIFEST_SHA,
+                       expected_counts: dict[str, int] = KNOWN_COUNTS,
+                       expected_protocol: Any = DATA_PROTOCOL) -> tuple[bool, str]:
     for name in ("best.pt", "history.json", "result.json", "load_report.json", "val_predictions.jsonl"):
         if not (run_dir / name).is_file() or (run_dir / name).stat().st_size == 0:
             return False, f"missing_or_empty_{name}"
@@ -296,6 +307,12 @@ def result_is_complete(run_dir: Path, variant: str) -> tuple[bool, str]:
             or not isinstance(history, list) or not any(row.get("phase") == "finetune" for row in history)
             or result.get("test_metrics") is not None):
         return False, "inconsistent_or_incomplete_training_result"
+    audit = result.get("split_audit", {})
+    if (result.get("data_protocol") != expected_protocol
+            or not isinstance(audit, dict) or audit.get("counts") != expected_counts
+            or audit.get("manifest_sha256") != expected_manifest_sha
+            or audit.get("data_protocol") != expected_protocol):
+        return False, "result_data_protocol_mismatch"
     return True, "complete"
 
 
@@ -342,7 +359,12 @@ def run_queues(plan: dict[str, Any], repo: Path, output: Path,
                 outcomes[variant] = {"gpu": gpu, "status": "launch_failed", "error_type": type(exc).__name__}
                 append("exit_codes.tsv", f"{variant}\t{gpu}\t-\t-\tlaunch_failed\t{time.time()}")
                 continue
-            complete, reason = result_is_complete(output / variant / "seed_42", variant)
+            complete, reason = result_is_complete(
+                output / variant / "seed_42", variant,
+                expected_manifest_sha=plan["manifest_sha256"],
+                expected_counts={split: plan["manifests"][split]["clips"] for split in ("train", "val")},
+                expected_protocol=plan["data_protocol"],
+            )
             completed = exit_code == 0 and complete
             outcomes[variant] = {"gpu": gpu, "pid": process.pid, "exit_code": exit_code,
                                  "status": "complete" if completed else reason if exit_code == 0 else "process_failed"}

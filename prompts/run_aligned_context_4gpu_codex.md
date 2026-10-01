@@ -1,7 +1,9 @@
 # 给四张 RTX3090 服务器上的 Codex
 
 请实际验证并运行下面的新模块四组对照。用户已决定跳过冻结特征
-诊断，直接训练候选模块；不能继续启动探针或39次完整矩阵。
+诊断，直接训练候选模块，并恢复历史完整 **train7372/val823** 协议。
+本轮数据协议标识：`fsn-full-7372-823-development-v1`。
+不要启动内部划分实验、探针或39次完整矩阵。
 
 仓库：<https://github.com/siyicheng0212-arch/FSN_REC>
 使用分支 **`codex/fsn-aligned-context`**，其中包含
@@ -13,7 +15,7 @@
 
 以下路径仅在服务器本地确认并导出，不写入公开仓库：
 `FSN_PYTHON`（CUDA Python）、`FSN_WORKTREE`（独立worktree）、
-`FSN_MANIFEST_DIR`（现成内部清单）、`FSN_CACHE_DIR`（现成缓存）、
+`FSN_MANIFEST_DIR`（历史full7372/823清单，不能使用inner目录）、`FSN_CACHE_DIR`（现成缓存）、
 `FSN_CHECKPOINT`（官方SSv2权重）、`FSN_OUTPUT_DIR`（全新正式输出）、
 `FSN_SMOKE_DIR`（全新私有烟雾检查和launcher日志位置）。
 
@@ -25,8 +27,9 @@
 - GPU3：`local_capacity`，仅使用局部特征的等参数量对照。
 
 四张卡、四个独立并行任务，不是 DDP。容量对照不等待Original结束。
-四组从同一官方 SSv2 预训练初始化，
-不能只给新组加载旧 Original 的七分类 best。先阅读
+四组从同一官方 SSv2 预训练重新训练完整7372，
+不从内部划分checkpoint续训，也不加载内部Original的七分类best。
+先阅读
 `experiments/ALIGNED_CONTEXT.md`、launcher 和 trainer。
 
 1. 只读检查 `nvidia-smi`、现有训练进程、磁盘、真实 CUDA Python。
@@ -40,16 +43,21 @@
    - manifest：`$FSN_MANIFEST_DIR`
    - cache：`$FSN_CACHE_DIR`
    - 官方预训练：`$FSN_CHECKPOINT`
-   路径必须真实确认。launcher 核对历史 train6586/val786 和权重 SHA。
+   路径必须真实确认。定位历史完整train7372/val823清单，核对原始字节SHA：
+   - train：`093d0adf08dc1d382c0d2e1863a2f4724cb24ebd5b3d0af070e0c76ca989f1d3`
+   - val：`ad785ec18b14b63616582a143384fac649e69e27d142dfcf87c6852f9d3c6f02`
+   - 官方初始化：`2dea5c15ce23b3549aeab977774649f0ce8dcbc5637d5d1d1319efc019896fc3`
    七类齐全，train/val clip/group 无交叉，所有缓存36f224有效。
-   val 存于原train缓存时使用只读 storage mapping；不改原清单的 split 或 SHA。
-   内部清单有 `inner_split_role` 时按它识别train/val；原`split`保留缓存来源。
-   `split=train, inner_split_role=val` 是验证样本，读取其现成train缓存。
-   使用本次修复提交中的统一解析器，不改写清单、不绕过group/标签/cache检查。
+   历史full builder已将原train6571+原val801合成7372，
+   将原test823列表派生为823验证列表。
+   复用现成full清单，不在现场重新划分或生成，不把inner清单拼成full清单。
+   823本轮用于选best，必须称开发验证，不能称独立test。
+   使用只读storage mapping和本次提交的统一解析器，不改写原split、SHA，
+   不绕过group/标签/cache检查，也不额外打开其他test。
    旧smoke失败现场保留，更新固定代码后在全新smoke位置重新检查。
    必要文件丢失则明确报告缺项；不要使用随机初始化或合成样本替代。
 3. 用确认后的 CUDA Python 运行 `OMP_NUM_THREADS=6 MKL_NUM_THREADS=6 "$FSN_PYTHON" -m unittest discover -s tests -p 'test_aligned*.py' -v`
-   （47项新模块、wrapper、trainer、数据解析、launcher单测）。核对实际源码
+   （本次54项新模块、wrapper、trainer、数据解析、launcher单测）。核对实际源码
    导入来自该 worktree，所有共享非分类头预训练张量完整加载；七类头和
    新模块才允许新初始化。确认四组同seed共享权重和七类头一致。
    保留 Original 原来的 detach／辅助损失策略，不能只检查最终 logits 梯度。
@@ -70,6 +78,7 @@
    时间/裁剪对应关系来自实际采样与crop状态，不得用帧序号硬凑。
    CUDA smoke 和任何失败现场必须真实记录；不能写“已通过”代替执行。
    smoke后若改动运行源码或输入，旧report失效，先提交再重新smoke。
+   内部划分的旧smoke不适用于此完整7372/823协议。
 5. 固定提交，保持隔离worktree clean，先只读生成正式计划：
 
    ```bash
@@ -89,20 +98,25 @@
    batch4/accum16有效batch64，workers4，SGD momentum.9 lr.002 wd.0005，
    global/stn/temporal LR ratios .5/.2/.2，sqrt_inverse七类权重，clip_grad20，
    bf16，context dim64/grid3/time_scale.25/spatial_scale1/lr_ratio1。
+   每个完整训练epoch必须实际遍历7372：batch4为1843个microbatch，
+   accum16为116次optimizer step，最后3个microbatch共12样本按真实分母归一；
+   不drop尾部，不用额外采样代替完整遍历。每轮验证完整823。
    不修改取帧、裁剪、划分或缓存；不使用跨clip顺序、人工框/角色，不评测test。
    OOM或NaN先保留现场报告；不偷偷改一组batch或重启。运行中不git pull、
    不改代码、不升级环境。某任务失败保留现场，其他正常独立任务可以结束。
 7. 启动后只读确认GPU0/1/2/3四个实际映射、四个任务PID及日志；
-   首次完整epoch核对history/best。
+   首次完整warmup epoch核对history与last；首次完整finetune epoch再核对best，
+   warmup阶段没有best属于预期。
    确认进入finetune，新模块残差和梯度有记录。监控NaN/OOM、单类塌缩、
    进程退出、磁盘与长时间无epoch。四组各自核对进程退出码和结果文件，
    不需要等Original结束才启动容量对照。不能把启动成功称作训练完成。
-8. 四组全部有效完成后，交付内部验证七类Macro-F1/accuracy、逐类P/R/F1/support、
+8. 四组全部有效完成后，交付823开发验证七类Macro-F1/accuracy、逐类P/R/F1/support、
    五类细动作指标、最佳轮次、训练耗时、参数和资源、扫散↔再灌注双向错误、
    来源/时长切片、其他退步类、模块梯度／残差及同checkpoint on/off改对改错。
    分清独立训练Original和同checkpoint关闭模块。选帧间隔/重复帧/剪辑风险
    要如实解释：缓存bin中心时间不是已核验PTS，几何attention不证明临床机制。
-   val786同时用于选best，只有开发诊断意义；单seed涨点不是论文结论。
+   val823同时用于选best，不是独立test；不与旧内部划分分数混报，
+   单seed涨点不是论文结论。
    先报告aligned是否优于Original、普通交互和容量对照，然后停止自动化。
 
 只允许后续分享去身份聚合报告；不要上传视频、原标注、私有路径日志、

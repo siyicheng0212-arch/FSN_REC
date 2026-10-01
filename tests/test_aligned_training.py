@@ -6,6 +6,7 @@ from pathlib import Path
 import random
 import tempfile
 import unittest
+from unittest import mock
 
 import numpy as np
 import torch
@@ -13,6 +14,7 @@ from torch import nn
 import torch.nn.functional as F
 
 from experiments.aligned_data import resolve_cache_record, ResolvedFullClipDataset, mapping_sha256, load_aligned_manifest, cache_split_hint
+from experiments.aligned_protocol import DATA_PROTOCOL, EXPECTED_COUNTS, EXPECTED_MANIFEST_SHA, validate_manifest_protocol
 from experiments.full_data import cache_paths, request_digest
 from experiments.pilot_data import ClipRecord, EXPECTED_LABELS
 from experiments.run_aligned_context import object_sha256, audit_manifests, audit_cache
@@ -130,12 +132,16 @@ class CacheRoleTest(unittest.TestCase):
             original_bytes[role]=path.read_bytes()
             hashes[role]=hashlib.sha256(original_bytes[role]).hexdigest()
         args=type("Args",(),{"manifest_dir":directory,"cache_dir":self.root})()
-        datasets,training_audit=make_datasets(args)
+        # This fixture exercises storage roles; production has no CLI bypass
+        # for the frozen full protocol.
+        with mock.patch.dict(EXPECTED_COUNTS,{"train":7,"val":7}), mock.patch.dict(EXPECTED_MANIFEST_SHA,hashes):
+            datasets,training_audit=make_datasets(args)
         records,_=audit_manifests(directory,hashes,{"train":7,"val":7})
         launcher_audit=audit_cache(records,self.root,directory)
         self.assertEqual(training_audit["manifest_sha256"],hashes)
         self.assertEqual(training_audit["cache_mapping_sha256"],launcher_audit["cache_mapping_sha256"])
         self.assertEqual(training_audit["counts"],{"train":7,"val":7})
+        self.assertEqual(training_audit["data_protocol"],DATA_PROTOCOL)
         self.assertTrue(all(row.split=="val" for row in datasets["val"].records))
         self.assertTrue(all(row.split=="train" for row in datasets["val"].storage_records))
         self.assertEqual(int(datasets["val"][2]["video"][0,0,0,0]),2)
@@ -195,6 +201,31 @@ class CliTest(unittest.TestCase):
         for flag in ("--allow-random-init","--test-after-training"):
             with self.assertRaises(SystemExit):
                 parse_args(["--manifest-dir","a","--cache-dir","b","--checkpoint","c",flag])
+
+
+class FullProtocolTest(unittest.TestCase):
+    def test_internal_counts_fail_even_with_frozen_full_hashes(self):
+        with self.assertRaisesRegex(RuntimeError,"requires counts"):
+            validate_manifest_protocol({"train":6586,"val":786},EXPECTED_MANIFEST_SHA)
+
+    def test_full_counts_with_rewritten_or_internal_hashes_fail(self):
+        hashes={**EXPECTED_MANIFEST_SHA,"val":"d6449196c3798a233a593db19da9045c92e02ba62bb6fa5a55d41bf118ee6580"}
+        with self.assertRaisesRegex(RuntimeError,"manifest SHA mismatch"):
+            validate_manifest_protocol(EXPECTED_COUNTS,hashes)
+
+    def test_trainer_rejects_subset_before_opening_any_cache(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            for role in ("train","val"):
+                rows=[ClipRecord(f"clip-{role}-{label}",role,label,name,"synthetic",f"group-{role}-{label}",
+                                "/not-loaded/video.mp4",0.,1.,1.).to_manifest_dict()
+                      for label,name in EXPECTED_LABELS.items()]
+                (root/f"{role}.jsonl").write_text("".join(json.dumps(row)+"\n" for row in rows))
+            args=type("Args",(),{"manifest_dir":root,"cache_dir":root/"missing-cache"})()
+            with mock.patch("experiments.train_aligned_context.ResolvedFullClipDataset") as dataset:
+                with self.assertRaisesRegex(RuntimeError,"requires counts"):
+                    make_datasets(args)
+                dataset.assert_not_called()
 
 
 if __name__=="__main__": unittest.main()
