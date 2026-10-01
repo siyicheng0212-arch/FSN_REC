@@ -12,6 +12,7 @@ from ops.transforms import *
 from torch.nn.init import normal_, constant_
 from archs.fsn_modules import LocalTemporalAdapter
 from archs.local_motion import LocalMotionEvidence
+from archs.aligned_context import AlignedContextResidual
 
 
 class TSN(nn.Module):
@@ -26,7 +27,10 @@ class TSN(nn.Module):
                  local_motion_mode='none', local_motion_context='none',
                  local_motion_dim=64, local_motion_window=3,
                  local_motion_temperature=0.07, local_motion_context_grid=2,
-                 local_motion_context_channels=1280):
+                 local_motion_context_channels=1280,
+                 context_mode='none', context_dim=64, context_grid=3,
+                 context_time_scale=0.25, context_spatial_scale=1.0,
+                 context_channels=1280, context_image_size=224, context_patch_size=128):
         super(TSN, self).__init__()
         self.modality = modality
         self.num_segments = num_segments
@@ -109,6 +113,23 @@ class TSN(nn.Module):
                 )
         else:
             self.local_motion = None
+
+        if context_mode not in {'none', 'plain', 'aligned', 'capacity'}:
+            raise ValueError("context_mode must be none, plain, aligned, or capacity")
+        if context_mode != 'none':
+            if local_motion_mode != 'none' or local_adapter_mode != 'none':
+                raise ValueError("aligned context requires the Original path without other local modules")
+            if base_model != 'resnet50' or temporal_pool:
+                raise ValueError("aligned context requires ResNet50 and temporal_pool=False")
+            with torch.random.fork_rng(devices=[]):
+                self.aligned_context = AlignedContextResidual(
+                    channels=512, dim=context_dim, global_channels=context_channels,
+                    grid=context_grid, mode=context_mode,
+                    time_scale=context_time_scale, spatial_scale=context_spatial_scale,
+                    image_size=context_image_size, patch_size=context_patch_size,
+                )
+        else:
+            self.aligned_context = None
 
         feature_dim = self._prepare_tsn(num_class)
 
@@ -254,7 +275,8 @@ class TSN(nn.Module):
     def partialBN(self, enable):
         self._enable_pbn = enable
 
-    def _forward_resnet_with_grid(self, frames, global_context=None, positions=None):
+    def _forward_resnet_with_grid(self, frames, global_context=None, positions=None,
+                                 global_positions=None, crop_actions=None):
         """Run torchvision ResNet while exposing layer-4 grids.
 
         TSM wrappers already installed inside the residual layers remain active.
@@ -270,6 +292,12 @@ class TSN(nn.Module):
         if self.local_motion is not None:
             features = self.local_motion(
                 features, self.num_segments, global_context=global_context, positions=positions
+            )
+        if self.aligned_context is not None:
+            features = self.aligned_context(
+                features, self.num_segments, global_context=global_context,
+                positions=positions, global_positions=global_positions,
+                crop_actions=crop_actions,
             )
         features = model.layer3(features)
         if self.local_adapter is not None:
@@ -295,8 +323,9 @@ class TSN(nn.Module):
         # Treat the complete new module as an explicit group.  Walking only
         # Conv/Linear leaves would silently omit GroupNorm and direct parameters.
         motion_modules = set(self.local_motion.modules()) if self.local_motion is not None else set()
+        context_modules = set(self.aligned_context.modules()) if self.aligned_context is not None else set()
         for m in self.modules():
-            if m in motion_modules:
+            if m in motion_modules or m in context_modules:
                 continue
             if isinstance(m, torch.nn.Conv2d) or isinstance(m, torch.nn.Conv1d) or isinstance(m, torch.nn.Conv3d):
                 ps = list(m.parameters())
@@ -357,9 +386,13 @@ class TSN(nn.Module):
         if self.local_motion is not None:
             policies.append({'params': list(self.local_motion.parameters()), 'lr_mult': 1,
                              'decay_mult': 1, 'name': 'local_motion'})
+        if self.aligned_context is not None:
+            policies.append({'params': list(self.aligned_context.parameters()), 'lr_mult': 1,
+                             'decay_mult': 1, 'name': 'aligned_context'})
         return policies
 
-    def forward(self, input, glance=False, no_reshape=False, global_context=None, positions=None):
+    def forward(self, input, glance=False, no_reshape=False, global_context=None, positions=None,
+                global_positions=None, crop_actions=None):
         if not no_reshape:
             sample_len = (3 if self.modality == "RGB" else 2) * self.new_length
 
@@ -372,10 +405,11 @@ class TSN(nn.Module):
                 base_out_feat, feature_maps = self.base_model(input.view((-1, sample_len) + input.size()[-2:]))
                 assert not torch.any(torch.isnan(base_out_feat))
                 assert not torch.any(torch.isnan(feature_maps))
-            elif (self.return_feature_grid or self.local_motion is not None) and 'resnet' in self.base_model_name:
+            elif (self.return_feature_grid or self.local_motion is not None or self.aligned_context is not None) and 'resnet' in self.base_model_name:
                 base_out_feat, feature_grid = self._forward_resnet_with_grid(
                     input.view((-1, sample_len) + input.size()[-2:]),
                     global_context=global_context, positions=positions,
+                    global_positions=global_positions, crop_actions=crop_actions,
                 )
             else:
                 base_out_feat = self.base_model(input.view((-1, sample_len) + input.size()[-2:]))
@@ -383,9 +417,10 @@ class TSN(nn.Module):
         else:
             if glance:
                 base_out_feat, feature_maps = self.base_model(input)
-            elif (self.return_feature_grid or self.local_motion is not None) and 'resnet' in self.base_model_name:
+            elif (self.return_feature_grid or self.local_motion is not None or self.aligned_context is not None) and 'resnet' in self.base_model_name:
                 base_out_feat, feature_grid = self._forward_resnet_with_grid(
-                    input, global_context=global_context, positions=positions
+                    input, global_context=global_context, positions=positions,
+                    global_positions=global_positions, crop_actions=crop_actions,
                 )
             else:
                 base_out_feat = self.base_model(input)

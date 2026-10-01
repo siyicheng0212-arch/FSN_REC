@@ -20,6 +20,10 @@ remote_logs/
 formal_results/
 local_motion_results/
 local_motion_audits/
+aligned_context_results/
+aligned_context_smoke/
+formal_aligned_context*/
+fsn_aligned_context_smoke*/
 full_cache_36f224/
 processed_server/
 

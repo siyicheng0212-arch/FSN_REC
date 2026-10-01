@@ -52,6 +52,8 @@ def _adafocus_args(
     local_motion_window: int = 3,
     local_motion_temperature: float = 0.07,
     local_motion_context_grid: int = 2,
+    context_mode: str = "none", context_dim: int = 64, context_grid: int = 3,
+    context_time_scale: float = 0.25, context_spatial_scale: float = 1.0,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         num_glance_segments=num_glance_segments,
@@ -96,6 +98,9 @@ def _adafocus_args(
         local_motion_temperature=local_motion_temperature,
         local_motion_context_grid=local_motion_context_grid,
         local_motion_lr_ratio=1.0,
+        context_mode=context_mode, context_dim=context_dim, context_grid=context_grid,
+        context_time_scale=context_time_scale, context_spatial_scale=context_spatial_scale,
+        context_lr_ratio=1.0,
         mc_sample_times=mc_sample_times,
         global_lr_ratio=0.5,
         stn_lr_ratio=0.2,
@@ -122,16 +127,22 @@ class AdaFocusFSN(FSNModel):
         local_motion_window: int = 3,
         local_motion_temperature: float = 0.07,
         local_motion_context_grid: int = 2,
+        context_mode: str = "none", context_dim: int = 64, context_grid: int = 3,
+        context_time_scale: float = 0.25, context_spatial_scale: float = 1.0,
     ) -> None:
         super().__init__()
         device = device or torch.device("cpu")
         if modified and local_motion_mode != "none":
             raise ValueError("local motion experiments must start from Original (modified=False)")
+        if context_mode != "none" and (modified or local_motion_mode != "none" or local_motion_context != "none"):
+            raise ValueError("aligned context experiments must start from Original without other modules")
         self.model_name = "adafocus_fsn" if modified else "adafocus_original"
         if local_motion_mode != "none":
             self.model_name = "adafocus_local_appearance" if local_motion_mode == "appearance" else (
                 "adafocus_local_motion_context" if local_motion_context == "global" else "adafocus_local_motion"
             )
+        if context_mode != "none":
+            self.model_name = "adafocus_context_" + context_mode
         self.num_glance_segments = num_glance_segments
         self.num_input_focus_segments = num_input_focus_segments
         self.num_focus_segments = num_focus_segments
@@ -152,12 +163,30 @@ class AdaFocusFSN(FSNModel):
                 local_motion_window,
                 local_motion_temperature,
                 local_motion_context_grid,
+                context_mode, context_dim, context_grid,
+                context_time_scale, context_spatial_scale,
             ),
         )
 
     @property
     def local_motion_module(self) -> nn.Module | None:
         return self.core.local_CNN.local_motion
+
+    @property
+    def context_module(self) -> nn.Module | None:
+        return self.core.local_CNN.aligned_context
+
+    def set_context_enabled(self, enabled: bool) -> None:
+        module = self.context_module
+        if module is None:
+            if enabled:
+                raise ValueError("this model has no context module")
+            return
+        module.enabled = bool(enabled)
+
+    def get_context_diagnostics(self) -> dict[str, Any]:
+        module = self.context_module
+        return {} if module is None else module.diagnostics()
 
     def set_local_motion_enabled(self, enabled: bool) -> None:
         module = self.local_motion_module
@@ -260,6 +289,8 @@ def build_model(
     local_motion_mode: str = "none", local_motion_context: str = "none",
     local_motion_dim: int = 64, local_motion_window: int = 3,
     local_motion_temperature: float = 0.07, local_motion_context_grid: int = 2,
+    context_mode: str = "none", context_dim: int = 64, context_grid: int = 3,
+    context_time_scale: float = 0.25, context_spatial_scale: float = 1.0,
 ) -> FSNModel:
     motion_names = {
         "adafocus_local_motion": ("matching", "none"),
@@ -268,17 +299,23 @@ def build_model(
     }
     if name in motion_names:
         local_motion_mode, local_motion_context = motion_names[name]
+    context_names = {"adafocus_context_plain": "plain", "adafocus_context_aligned": "aligned",
+                     "adafocus_context_capacity": "capacity"}
+    if name in context_names:
+        context_mode = context_names[name]
     motion_kwargs = dict(
         local_motion_mode=local_motion_mode, local_motion_context=local_motion_context,
         local_motion_dim=local_motion_dim, local_motion_window=local_motion_window,
         local_motion_temperature=local_motion_temperature,
         local_motion_context_grid=local_motion_context_grid,
+        context_mode=context_mode, context_dim=context_dim, context_grid=context_grid,
+        context_time_scale=context_time_scale, context_spatial_scale=context_spatial_scale,
     )
     if name == "adafocus_original":
         model = AdaFocusFSN(num_classes=num_classes, modified=False, device=device, **motion_kwargs)
     elif name == "adafocus_fsn":
         model = AdaFocusFSN(num_classes=num_classes, modified=True, device=device, **motion_kwargs)
-    elif name in motion_names:
+    elif name in motion_names or name in context_names:
         model = AdaFocusFSN(num_classes=num_classes, modified=False, device=device, **motion_kwargs)
     elif name == "mvit_v2_s_reference":
         model = MViTV2Reference(num_classes=num_classes)
@@ -294,6 +331,14 @@ def load_shared_adafocus_weights(modified: AdaFocusFSN, baseline_state: dict[str
         key: value for key, value in baseline_state.items()
         if key in current and current[key].shape == value.shape
     }
+    if modified.context_module is not None:
+        # Context experiments require a complete Original state. A permissive
+        # partial load would invalidate the zero-residual comparison.
+        incompatible = sorted(set(baseline_state) - set(compatible))
+        missing_shared = sorted(key for key in current
+                                if key not in compatible and ".aligned_context." not in key)
+        if incompatible or missing_shared:
+            raise ValueError(f"incomplete Original state: incompatible={incompatible}, missing_shared={missing_shared}")
     result = modified.load_state_dict(compatible, strict=False)
     return {
         "missing_keys": list(result.missing_keys),
