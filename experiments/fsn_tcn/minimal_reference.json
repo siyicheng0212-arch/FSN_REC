@@ -1,0 +1,14 @@
+{
+  "schema": "fsn-tcn-minimal-v1",
+  "baseline": {
+    "kind": "reference",
+    "historical_reproduction": false,
+    "config": {"width": 64, "layers": 4, "kernel_size": 3, "dropout": 0.1, "num_classes": 7}
+  },
+  "seeds": [42],
+  "challenge_seed": 20261002,
+  "threshold": 0.9,
+  "hard_negative_ratio": 1.0,
+  "relation": {"epochs": 30, "patience": 5, "batch_size": 16, "lr": 0.001, "weight_decay": 0.01, "clip_grad": 5.0},
+  "optimization": {"optimizer": "AdamW", "loss": "CE", "epochs": 30, "patience": 5, "batch_size": 4, "lr": 0.001, "weight_decay": 0.01, "clip_grad": 5.0}
+}
