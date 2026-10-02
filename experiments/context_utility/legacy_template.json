@@ -1,0 +1,21 @@
+{
+  "schema": "fsn-context-utility-v1",
+  "readiness": "unavailable_until_verified",
+  "note": "A template only. Replace every VERIFY field using actual historical source/config/checkpoint; this is not a legacy reproduction.",
+  "seeds": [42],
+  "challenge_seed": 20261002,
+  "module": {"dim": 64},
+  "augmentation": {"anchors_per_segment": 1, "max_neighbors": 1, "anchor_loss_weight": 1.0},
+  "optimization": {"epochs": 30, "patience": 5, "batch_size": 4, "lr": 0.001, "weight_decay": 0.01, "clip_grad": 5.0, "optimizer": "AdamW", "loss": "CE"},
+  "baseline": {
+    "kind": "legacy",
+    "feature_contract": "pooled_global_local_mean_frozen_A_logits_v1",
+    "factory": "VERIFY_actual_legacy_factory:build",
+    "kwargs": {},
+    "temporal_paths": ["VERIFY_actual_temporal_conv_path"],
+    "source_dependencies": ["VERIFY_actual_legacy_model_source.py"],
+    "legacy_audit": "VERIFY_legacy_audit.json",
+    "checkpoint_state_key": "model",
+    "checkpoint_target": ""
+  }
+}

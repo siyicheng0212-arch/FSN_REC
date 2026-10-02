@@ -1,6 +1,7 @@
 {
   "lishui": "clinical",
   "menzhen": "clinical",
+  "FSN": "network",
   "bilibili": "network",
   "dy": "network",
   "ks": "network",

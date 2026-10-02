@@ -1,0 +1,16 @@
+{
+  "schema": "fsn-context-utility-v1",
+  "seeds": [42],
+  "challenge_seed": 20261002,
+  "module": {"dim": 64},
+  "augmentation": {"anchors_per_segment": 1, "max_neighbors": 1, "anchor_loss_weight": 1.0},
+  "optimization": {"epochs": 30, "patience": 5, "batch_size": 4, "lr": 0.001, "weight_decay": 0.01, "clip_grad": 5.0, "optimizer": "AdamW", "loss": "CE"},
+  "baseline": {
+    "kind": "reference",
+    "feature_contract": "pooled_global_local_mean_frozen_A_logits_v1",
+    "config": {"width": 64, "layers": 4, "kernel_size": 3, "dropout": 0.1, "num_classes": 7},
+    "temporal_paths": ["blocks.0.temporal", "blocks.1.temporal", "blocks.2.temporal", "blocks.3.temporal"],
+    "checkpoint_state_key": "model",
+    "checkpoint_target": ""
+  }
+}
