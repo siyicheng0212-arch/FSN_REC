@@ -1,0 +1,14 @@
+{
+  "schema": "fsn-tcn-revision-v1",
+  "seeds": [42],
+  "variants": ["scalar", "class_conditioned", "logits_only", "visual_logits"],
+  "module": {"gate_dim": 64},
+  "optimization": {
+    "epochs": 30,
+    "patience": 5,
+    "chains_per_step": 4,
+    "lr": 0.001,
+    "weight_decay": 0.01,
+    "grad_clip": 5.0
+  }
+}
