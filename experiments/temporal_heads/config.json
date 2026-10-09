@@ -1,0 +1,19 @@
+{
+  "seed": 42,
+  "epochs": 30,
+  "batch_size_segments": 16,
+  "optimizer": "AdamW",
+  "lr": 0.001,
+  "weight_decay": 0.01,
+  "clip_grad_norm": 5.0,
+  "early_stopping": false,
+  "select_best": "val_full_seven_class_macro_f1_earliest_tie",
+  "normal_chain_only": true,
+  "A_frozen": true,
+  "variants": ["plain_tcn_fresh", "mstcnpp", "asformer"],
+  "plain_tcn": {"hidden": 64, "blocks": 3, "dropout": 0.1},
+  "mstcnpp": {"hidden": 64, "PG_layers": 11, "refinement_layers": 10, "refinements": 3, "dropout": 0.5},
+  "asformer": {"hidden": 64, "layers": 10, "decoders": 3, "r1": 2, "r2": 2, "channel_mask_rate": 0.3, "dropout": 0.5},
+  "multistage_loss": {"reduction": "sum_of_stage_CE_and_smoothing", "smooth_weight": 0.15, "log_difference_square_cap": 16.0, "smooth_normalization": "valid_within_segment_adjacent_pairs_times_seven"},
+  "precision": "float32"
+}
