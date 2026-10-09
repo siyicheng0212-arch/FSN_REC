@@ -35,6 +35,9 @@ def unchanged(p):
 
 def plan(args):
     p = old_run.plan(args)
+    variants = tuple(getattr(args, "variants", VARIANTS))
+    if not variants or len(set(variants)) != len(variants) or any(v not in VARIANTS for v in variants):
+        raise ValueError("choose distinct supported heads; no implicit resume")
     prior = Path(args.prior_context_run).resolve()
     out = Path(p["output"])
     if out.is_relative_to(prior) or prior.is_relative_to(out):
@@ -49,11 +52,11 @@ def plan(args):
         raise ValueError("prior context suite is not complete with the same A and ordinary TCN")
     commands = {"unit_tests": [p["python"], "-m", "unittest", "tests.test_relation_tcn_baseline",
                               "tests.test_videomae_tcn", "tests.test_direction_gate", "tests.test_temporal_heads", "-v"]}
-    for stage in ("audit", "smoke", *("train_" + v for v in VARIANTS), "evaluate"):
+    for stage in ("audit", "smoke", *("train_" + v for v in variants), "evaluate"):
         commands[stage] = [p["python"], "-m", "experiments.temporal_heads.worker", "--stage", stage,
                            "--run-protocol", str(out / "run_protocol.json")]
     return {**p, "schema": SCHEMA, "source_sha256": hashes(), "training": CONFIG,
-            "variants": list(VARIANTS), "commands": commands, "prior_context_run": str(prior),
+            "variants": list(variants), "commands": commands, "prior_context_run": str(prior),
             "prior_sha256": {n: sha256_file(prior / n) for n in PRIOR_FILES},
             "checkpoint_role": "historical_replay_and_comparison_only_all_new_heads_fresh",
             "architecture_and_loss_differ_not_architecture_causality": True,
@@ -102,7 +105,7 @@ def execute(p):
             if stage.startswith("train_") and not json.loads((out / stage[6:] / "result.json").read_text()).get("training_completed"):
                 raise RuntimeError("head result incomplete despite zero exit")
         report = json.loads((out / "evaluation/public_safe_summary.json").read_text())
-        if not report.get("training_completed") or set(report["variants"]) != set(VARIANTS):
+        if not report.get("training_completed") or set(report["variants"]) != set(p["variants"]):
             raise RuntimeError("aggregate evaluation incomplete")
         write_json(out / "suite_result.json", {"schema": SCHEMA, "status": "complete",
                    "training_completed": True, "exit_codes": exits, "test_read": False})
@@ -120,6 +123,8 @@ def main():
     parser.add_argument("--python", default=sys.executable)
     parser.add_argument("--gpu", type=int, default=0)
     parser.add_argument("--execute", action="store_true")
+    parser.add_argument("--variants", nargs="+", choices=VARIANTS, default=VARIANTS,
+                        help="Fresh heads only; completed heads can be replayed separately")
     p = plan(parser.parse_args())
     if "--execute" in sys.argv:
         execute(p)

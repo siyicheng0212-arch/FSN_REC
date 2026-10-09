@@ -15,6 +15,7 @@ from experiments.videomae_tcn.run import fresh_output, wait_released_gpu
 from .model import VARIANTS
 
 SCHEMA = "fsn-center-preserving-context-evidence-v1"
+PAIRED_VARIANTS = ("legacy_continue", "context_delta_continue")
 TRAINING = {"seed": 42, "epochs": 30, "early_stopping": False,
             "batch_size_segments": 16, "optimizer": "AdamW", "lr": .001,
             "weight_decay": .01, "clip_grad_norm": 5.0,
@@ -28,7 +29,8 @@ TRAINING = {"seed": 42, "epochs": 30, "early_stopping": False,
 def hashes():
     names = ("experiments/context_evidence/__init__.py", "experiments/context_evidence/model.py",
              "experiments/context_evidence/run.py", "experiments/context_evidence/worker.py",
-             "tests/test_context_evidence.py")
+             "tests/test_context_evidence.py", "experiments/context_evidence/multiseed.py",
+             "tests/test_context_multiseed.py")
     return {**old_run.hashes(), **{n: sha256_file(ROOT / n) for n in names}}
 
 
@@ -40,14 +42,24 @@ def unchanged(p):
 
 def plan(args):
     p = old_run.plan(args)  # exact existing evidence + complete ordinary TCN seals
+    seed = getattr(args, "seed", 42)
+    selected = getattr(args, "variant", None)
+    if seed not in (42, 10, 1217) or (seed != 42 and selected not in PAIRED_VARIANTS):
+        raise ValueError("additional seeds only support the two registered no-augmentation controls")
+    variants = (selected,) if selected else VARIANTS
+    if selected and selected not in PAIRED_VARIANTS:
+        raise ValueError("unsupported paired control")
+    training = {**TRAINING, "seed": seed}
     commands = {"unit_tests": [p["python"], "-m", "unittest", "tests.test_relation_tcn_baseline",
                               "tests.test_videomae_tcn", "tests.test_direction_gate",
-                              "tests.test_context_evidence", "-v"]}
-    for stage in ("audit", "smoke", *("train_" + v for v in VARIANTS), "evaluate"):
+                              "tests.test_context_evidence", "tests.test_context_multiseed", "-v"]}
+    for stage in ("audit", "smoke", *("train_" + v for v in variants), "evaluate"):
         commands[stage] = [p["python"], "-m", "experiments.context_evidence.worker", "--stage", stage,
                            "--run-protocol", str(Path(p["output"]) / "run_protocol.json")]
-    return {**p, "schema": SCHEMA, "source_sha256": hashes(), "training": TRAINING,
-            "variants": list(VARIANTS), "commands": commands,
+    return {**p, "schema": SCHEMA, "source_sha256": hashes(), "training": training,
+            "variants": list(variants), "commands": commands,
+            "stability_scope": "fixed_A42_and_fixed_TCN42_temporal_continuation_only",
+            "anchor_eligibility_and_validation_challenge_seed": 42,
             "design_role": "exploratory_followup_informed_by_prior_val823_error_audit",
             "coefficient": {"inputs": "six_detached_A_and_context_candidate_confidence_statistics",
                             "parameters": 7, "range": "(0,2)", "initial_value": 1.0,
@@ -98,7 +110,7 @@ def execute(p):
             if stage.startswith("train_") and not json.loads((out / stage[6:] / "result.json").read_text()).get("training_completed"):
                 raise RuntimeError("training result incomplete despite zero exit")
         report = json.loads((out / "evaluation/public_safe_summary.json").read_text())
-        if not report.get("training_completed") or set(report["variants"]) != set(VARIANTS):
+        if not report.get("training_completed") or set(report["variants"]) != set(p["variants"]):
             raise RuntimeError("aggregate evaluation incomplete")
         write_json(out / "suite_result.json", {"schema": SCHEMA, "status": "complete",
                    "training_completed": True, "exit_codes": exits, "test_read": False})
@@ -115,6 +127,8 @@ def main():
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--python", default=sys.executable)
     parser.add_argument("--gpu", type=int, default=0)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--variant", choices=PAIRED_VARIANTS)
     parser.add_argument("--execute", action="store_true")
     args = parser.parse_args()
     p = plan(args)

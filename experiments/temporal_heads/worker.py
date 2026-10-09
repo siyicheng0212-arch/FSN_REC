@@ -85,7 +85,7 @@ def smoke(p, out, segments, device):
     items = [next(s for s in segments["train"] if len(s.clip_ids) == k) for k in (1, 2, 3, 4)]
     batch = collate_segments(items)
     report = {}
-    for variant in VARIANTS:
+    for variant in p["variants"]:
         seed_all(); model = make_model(variant, device)
         torch.cuda.reset_peak_memory_stats(device)
         model.eval()
@@ -214,7 +214,7 @@ def evaluate(p, out, segments, metadata, data, plans, device):
         "source_and_identity_are_not_model_inputs": True,
         "mature_heads_singletons_use_classifier_not_A_fallback": True}
     preds = {}
-    for v in VARIANTS:
+    for v in p["variants"]:
         result = json.loads((out / v / "result.json").read_text())
         ck = torch.load(out / v / "best.pt", map_location="cpu", weights_only=True)
         if not result["training_completed"] or sha256_file(out / v / "best.pt") != result["best_sha256"] or \
@@ -237,13 +237,14 @@ def evaluate(p, out, segments, metadata, data, plans, device):
         with (directory / (v + "_private_val_predictions.jsonl")).open("x") as stream:
             for r in private:
                 stream.write(json.dumps(r)+"\n")
-    for v in VARIANTS:
-        report["variants"][v]["paired_vs_same_budget_plain"] = _paired(data["val"]["labels"].numpy(), preds[v].argmax(-1).numpy(), preds["plain_tcn_fresh"].argmax(-1).numpy())
+    if "plain_tcn_fresh" in preds:
+        for v in p["variants"]:
+            report["variants"][v]["paired_vs_same_budget_plain"] = _paired(data["val"]["labels"].numpy(), preds[v].argmax(-1).numpy(), preds["plain_tcn_fresh"].argmax(-1).numpy())
     serialized = json.dumps(report)
     if any(k in serialized for k in ('"clip_id"', '"recording_key"', '/root/', '/Users/', '"feature_path"')):
         raise RuntimeError("privacy leak in aggregate")
     write_json(directory / "public_safe_summary.json", report)
-    print(json.dumps({v: report["variants"][v]["metrics"]["macro_f1"] for v in VARIANTS}), flush=True)
+    print(json.dumps({v: report["variants"][v]["metrics"]["macro_f1"] for v in p["variants"]}), flush=True)
 
 
 def main():
@@ -262,7 +263,7 @@ def main():
     data, plans = cache(out)
     if args.stage == "smoke":
         smoke(p, out, segments, device)
-    elif args.stage.startswith("train_") and args.stage[6:] in VARIANTS:
+    elif args.stage.startswith("train_") and args.stage[6:] in p["variants"]:
         train(p, out, segments, data, args.stage[6:], device)
     elif args.stage == "evaluate":
         evaluate(p, out, segments, metadata, data, plans, device)

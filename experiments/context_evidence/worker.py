@@ -27,13 +27,19 @@ from .model import ContextEvidenceTCN, VARIANTS, AUGMENTED, CONTEXT_VARIANTS
 from .run import SCHEMA, TRAINING, unchanged
 
 
-def seed_all():
-    random.seed(42); np.random.seed(42); torch.manual_seed(42); torch.cuda.manual_seed_all(42)
+def seed_all(seed=42):
+    random.seed(seed); np.random.seed(seed); torch.manual_seed(seed); torch.cuda.manual_seed_all(seed)
+
+
+def sampling_orders(seed, segment_count, anchor_count, epochs=30):
+    generator = torch.Generator().manual_seed(seed)
+    return (torch.stack([torch.randperm(segment_count, generator=generator) for _ in range(epochs)]),
+            torch.stack([torch.randperm(anchor_count, generator=generator) for _ in range(epochs)]))
 
 
 def make_model(p, statistics, variant, device):
     with torch.random.fork_rng(devices=[]):
-        torch.manual_seed(42)
+        torch.manual_seed(p["training"]["seed"])
         m = ContextEvidenceTCN(TCNConfig(**p["evidence"]["model_config"]), variant, statistics)
     if variant != "clip_only_matched":
         ck = torch.load(Path(p["base_run"]) / "tcn/best.pt", map_location="cpu", weights_only=True)
@@ -78,11 +84,8 @@ def audit(p, out, device):
         evidence[split] = data
     if not plans["train"]["replacements"]:
         raise RuntimeError("no eligible train-only unchanged-anchor augmentation evidence")
-    generator = torch.Generator().manual_seed(42)
-    evidence["segment_orders"] = torch.stack([torch.randperm(len(segments["train"]), generator=generator)
-                                              for _ in range(TRAINING["epochs"])])
-    evidence["anchor_orders"] = torch.stack([torch.randperm(len(plans["train"]["replacements"]), generator=generator)
-                                             for _ in range(TRAINING["epochs"])])
+    evidence["segment_orders"], evidence["anchor_orders"] = sampling_orders(
+        p["training"]["seed"], len(segments["train"]), len(plans["train"]["replacements"]), p["training"]["epochs"])
     evidence["statistics"] = train_statistics(evidence["train"]["a"], evidence["train"]["context_candidate"])
     _torch_save(out / "private_evidence.pt", evidence)
     write_json(out / "private_anchor_plans.json", plans)
@@ -143,8 +146,8 @@ def smoke(p, out, segments, data, plans, device):
     with torch.no_grad():
         historical_batch = historical(batch[0].to(device), batch[1].to(device), batch[3].to(device))
     report = {}
-    for v in VARIANTS:
-        seed_all(); m = make_model(p, data["statistics"], v, device).eval()
+    for v in p["variants"]:
+        seed_all(p["training"]["seed"]); m = make_model(p, data["statistics"], v, device).eval()
         with torch.no_grad():
             initial, details = m(batch[0].to(device), batch[1].to(device), batch[3].to(device), return_details=True)
             if v != "clip_only_matched":
@@ -206,7 +209,8 @@ def predictions(model, segments, device, mode="learned"):
 
 def train(p, out, segments, data, plans, variant, device):
     directory = out / variant; directory.mkdir(mode=0o700, exist_ok=False)
-    seed_all(); model = make_model(p, data["statistics"], variant, device)
+    seed = p["training"]["seed"]
+    seed_all(seed); model = make_model(p, data["statistics"], variant, device)
     optimizer = torch.optim.AdamW((w for w in model.parameters() if w.requires_grad), lr=.001, weight_decay=.01)
     torch.cuda.reset_peak_memory_stats(device)
     began, history, best, steps = time.monotonic(), [], -math.inf, 0
@@ -220,8 +224,8 @@ def train(p, out, segments, data, plans, variant, device):
         normal_sum, anchor_sum, normal_visits, anchor_visits, grad_max = 0., 0., 0, 0, {}
         start = time.monotonic()
         for b, indices in enumerate(batches):
-            torch.manual_seed(42 + epoch * len(batches) + b)
-            torch.cuda.manual_seed_all(42 + epoch * len(batches) + b)
+            torch.manual_seed(seed + epoch * len(batches) + b)
+            torch.cuda.manual_seed_all(seed + epoch * len(batches) + b)
             batch = collate_segments([segments["train"][i] for i in indices])
             ab, positions = anchor_batch(segments["train"], plans["train"], anchors[b], variant in AUGMENTED)
             optimizer.zero_grad(set_to_none=True)
@@ -254,13 +258,13 @@ def train(p, out, segments, data, plans, variant, device):
             _torch_save(directory / "best.pt", {"schema": SCHEMA, "variant": variant, "model": model.state_dict(),
                 "statistics": data["statistics"], "epoch": epoch+1, "macro_f1": best,
                 "source_commit": p["source_commit"], "input_sha256": p["evidence"]["input_sha256"],
-                "base_sha256": p["base_sha256"], "training": TRAINING})
+                "base_sha256": p["base_sha256"], "training": p["training"]})
         atomic_json(directory / "history.json", history)
         print(json.dumps({"variant": variant, "epoch": epoch+1, "train_loss": row["train_loss"],
                           "val_macro_f1": metrics["macro_f1"], "val_accuracy": metrics["accuracy"], "best": best}), flush=True)
     ck = torch.load(directory / "best.pt", map_location="cpu", weights_only=True)
     write_json(directory / "result.json", {"training_completed": True, "test_read": False, "variant": variant,
-        "epochs_completed": len(history), "optimizer_steps": steps, "best_epoch": ck["epoch"], "best_macro_f1": best,
+        "seed": seed, "epochs_completed": len(history), "optimizer_steps": steps, "best_epoch": ck["epoch"], "best_macro_f1": best,
         "best_sha256": sha256_file(directory / "best.pt"), "parameters": sum(w.numel() for w in model.parameters()),
         "trainable_parameters": sum(w.numel() for w in model.parameters() if w.requires_grad),
         "classifier_bias_is_cancelled_and_frozen": variant in CONTEXT_VARIANTS,
@@ -291,18 +295,19 @@ def evaluate(p, out, segments, metadata, data, plans, device):
     report = {"schema": SCHEMA, "source_commit": p["source_commit"], "training_completed": True,
         "validation_role": "val823_development_not_independent_test", "test_read": False, "A_frozen": True,
         "definition_selected_after_prior_validation_audit": True, "counts": p["evidence"]["counts"],
-        "training": TRAINING, "source_and_identity_are_not_model_inputs": True,
+        "training": p["training"], "source_and_identity_are_not_model_inputs": True,
+        "stability_scope": "fixed_A42_and_fixed_TCN42_temporal_continuation_only",
         "A": simple_metrics(data["val"], data["val"]["a"]),
         "historical_TCN": simple_metrics(data["val"], data["val"]["t"]), "variants": {},
         "synthetic_challenge_not_real_edit_boundaries": True}
     old = data["val"]["t"]
     all_logits = {}
-    for v in VARIANTS:
+    for v in p["variants"]:
         result = json.loads((out / v / "result.json").read_text())
         ck = torch.load(out / v / "best.pt", map_location="cpu", weights_only=True)
         if not result["training_completed"] or sha256_file(out / v / "best.pt") != result["best_sha256"] \
                 or ck["source_commit"] != p["source_commit"] or ck["input_sha256"] != p["evidence"]["input_sha256"] \
-                or ck["base_sha256"] != p["base_sha256"] or ck["training"] != TRAINING or ck["variant"] != v:
+                or ck["base_sha256"] != p["base_sha256"] or ck["training"] != p["training"] or ck["variant"] != v:
             raise RuntimeError("best checkpoint or training seal changed")
         m = make_model(p, ck["statistics"], v, device); m.load_state_dict(ck["model"], strict=True)
         private, logits, coeff, delta = predictions(m, segments["val"], device)
@@ -343,15 +348,16 @@ def evaluate(p, out, segments, metadata, data, plans, device):
         with (directory / (v + "_private_val_predictions.jsonl")).open("x") as stream:
             for row in private:
                 stream.write(json.dumps(row)+"\n")
-    base = all_logits["legacy_aug"]
-    for v in VARIANTS:
-        report["variants"][v]["paired_vs_same_budget_legacy_aug"] = _paired(data["val"]["labels"].numpy(), all_logits[v].argmax(-1).numpy(), base.argmax(-1).numpy())
+    if "legacy_aug" in all_logits:
+        base = all_logits["legacy_aug"]
+        for v in p["variants"]:
+            report["variants"][v]["paired_vs_same_budget_legacy_aug"] = _paired(data["val"]["labels"].numpy(), all_logits[v].argmax(-1).numpy(), base.argmax(-1).numpy())
     # Allow only an aggregate safe summary to leave the private output.
     serialized = json.dumps(report)
     if any(k in serialized for k in ('"clip_id"', '"recording_key"', '/root/', '/Users/', '"feature_path"')):
         raise RuntimeError("private key or path leaked into safe aggregate")
     write_json(directory / "public_safe_summary.json", report)
-    print(json.dumps({v: report["variants"][v]["metrics"]["macro_f1"] for v in VARIANTS}), flush=True)
+    print(json.dumps({v: report["variants"][v]["metrics"]["macro_f1"] for v in p["variants"]}), flush=True)
 
 
 def main():
@@ -370,7 +376,7 @@ def main():
         raise RuntimeError("frozen evidence seal changed")
     if args.stage == "smoke":
         smoke(p, out, segments, data, plans, device)
-    elif args.stage.startswith("train_") and args.stage[6:] in VARIANTS:
+    elif args.stage.startswith("train_") and args.stage[6:] in p["variants"]:
         train(p, out, segments, data, plans, args.stage[6:], device)
     elif args.stage == "evaluate":
         evaluate(p, out, segments, metadata, data, plans, device)
