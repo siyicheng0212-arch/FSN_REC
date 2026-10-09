@@ -32,8 +32,8 @@ class RelationConfig:
             raise ValueError("dim must be divisible by heads")
         if not 0 <= self.dropout < 1:
             raise ValueError("dropout must be in [0, 1)")
-        if self.mode not in {"mlp", "dual"}:
-            raise ValueError("mode must be 'mlp' or 'dual'")
+        if self.mode not in {"mlp", "dual", "endpoint", "wide_mlp"}:
+            raise ValueError("mode must be 'mlp', 'dual', 'endpoint', or 'wide_mlp'")
 
 
 def _pair(left: Tensor, right: Tensor) -> Tensor:
@@ -63,10 +63,14 @@ class RelationNet(nn.Module):
         self.config = config
         d = config.dim
         self.global_projection = nn.Sequential(nn.Linear(config.global_dim, d), nn.LayerNorm(d))
-        self.local_projection = nn.Sequential(nn.Linear(config.local_dim, d), nn.LayerNorm(d))
-        self.scene_head = _mlp(8 * d, d, 2 * d, config.dropout)
+        if config.mode != "endpoint":
+            self.local_projection = nn.Sequential(nn.Linear(config.local_dim, d), nn.LayerNorm(d))
+            # Relative to the original MLP, Dual adds exactly 24*d*d+23*d
+            # parameters. Each extra scene hidden unit adds 9*d+1 parameters.
+            extra = round((24 * d * d + 23 * d) / (9 * d + 1)) if config.mode == "wide_mlp" else 0
+            self.scene_head = _mlp(8 * d, d, 2 * d + extra, config.dropout)
 
-        if config.mode == "dual":
+        if config.mode in {"dual", "endpoint"}:
             self.position_embedding = _mlp(1, d, d, config.dropout)
             self.side_embedding = nn.Embedding(2, d)
             layer = nn.TransformerEncoderLayer(
@@ -78,13 +82,14 @@ class RelationNet(nn.Module):
                 layer, num_layers=1, norm=nn.LayerNorm(d), enable_nested_tensor=False,
             )
             self.temporal_head = _mlp(4 * d, d, 2 * d, config.dropout)
-            classifier_dim = 2 * d
+            classifier_dim = 2 * d if config.mode == "dual" else d
         else:
             classifier_dim = d
         self.classifier = _mlp(classifier_dim, 1, d, config.dropout)
 
     def _evidence(self, side: Mapping[str, Tensor], name: str):
-        required = ("global_tokens", "local_tokens", "global_positions", "local_positions")
+        required = (("global_tokens", "global_positions") if self.config.mode == "endpoint"
+                    else ("global_tokens", "local_tokens", "global_positions", "local_positions"))
         missing = [key for key in required if key not in side]
         if missing:
             raise ValueError(f"{name} evidence is missing: {', '.join(missing)}")
@@ -97,17 +102,18 @@ class RelationNet(nn.Module):
                 raise ValueError(f"{name}.{key} must be finite")
             detached[key] = value.detach()
 
-        global_tokens, local_tokens = detached["global_tokens"], detached["local_tokens"]
-        for key, channels in (("global_tokens", self.config.global_dim),
-                              ("local_tokens", self.config.local_dim)):
+        branches = (("global_tokens", self.config.global_dim),)
+        if self.config.mode != "endpoint":
+            branches += (("local_tokens", self.config.local_dim),)
+        for key, channels in branches:
             tokens = detached[key]
             if tokens.ndim != 3 or tokens.shape[0] < 1 or tokens.shape[1] < 1 or tokens.shape[2] != channels:
                 raise ValueError(f"{name}.{key} must have shape [B,T,{channels}] with B,T > 0")
-        if global_tokens.shape[0] != local_tokens.shape[0]:
+        if self.config.mode != "endpoint" and detached["global_tokens"].shape[0] != detached["local_tokens"].shape[0]:
             raise ValueError(f"{name} global/local batch sizes differ")
         if len({value.device for value in detached.values()}) != 1:
             raise ValueError(f"{name} evidence tensors must share a device")
-        for branch in ("global", "local"):
+        for branch in (("global",) if self.config.mode == "endpoint" else ("global", "local")):
             positions = detached[f"{branch}_positions"]
             if positions.shape != detached[f"{branch}_tokens"].shape[:2]:
                 raise ValueError(f"{name}.{branch}_positions must have shape [B,T]")
@@ -126,14 +132,15 @@ class RelationNet(nn.Module):
 
         global_left = self.global_projection(left["global_tokens"])
         global_right = self.global_projection(right["global_tokens"])
-        local_left = self.local_projection(left["local_tokens"])
-        local_right = self.local_projection(right["local_tokens"])
-        scene = self.scene_head(torch.cat((
-            _pair(global_left.mean(1), global_right.mean(1)),
-            _pair(local_left.mean(1), local_right.mean(1)),
-        ), dim=-1))
+        if self.config.mode != "endpoint":
+            local_left = self.local_projection(left["local_tokens"])
+            local_right = self.local_projection(right["local_tokens"])
+            scene = self.scene_head(torch.cat((
+                _pair(global_left.mean(1), global_right.mean(1)),
+                _pair(local_left.mean(1), local_right.mean(1)),
+            ), dim=-1))
 
-        if self.config.mode == "dual":
+        if self.config.mode in {"dual", "endpoint"}:
             k = self.config.endpoint_tokens
             tail, head = global_left[:, -k:], global_right[:, :k]
             tail_pos = left["global_positions"][:, -k:]
@@ -151,6 +158,6 @@ class RelationNet(nn.Module):
             temporal = self.temporal_head(_pair(
                 temporal_tokens[:, :split].mean(1), temporal_tokens[:, split:].mean(1),
             ))
-            scene = torch.cat((scene, temporal), dim=-1)
+            scene = torch.cat((scene, temporal), dim=-1) if self.config.mode == "dual" else temporal
 
         return self.classifier(scene).squeeze(-1)
