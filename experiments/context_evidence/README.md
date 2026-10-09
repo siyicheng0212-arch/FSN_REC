@@ -127,3 +127,69 @@ legal chains; validate on independent records; repeat prespecified head seeds
 with paired record-cluster uncertainty. Frozen-A head seeds are not full-system
 stability. This launcher starts no extra structures, seeds, visual training or
 hyperparameter search after completion. No novelty or improvement is promised.
+
+## FSN-specific interpretation and completed exploratory run
+
+The single-GPU seed42 suite has now completed: all six models trained for 30
+actual epochs / 5910 optimizer steps, all stages exited zero, and all selected
+best checkpoints replayed successfully. The runtime source commit was
+`871979c1c41ed42da9cc507af44b0e0dc0fbeda1`. This GitHub branch is a minimal
+publication snapshot with the same experiment source blobs and required
+dependencies; its commit metadata is different. No training worktree was changed.
+
+See [the privacy-reviewed aggregate report](../../reports/context_evidence_seed42_20261009.json)
+for full per-class metrics, confusion matrices, paired changes, resources,
+source/duration/singleton slices and coefficient diagnostics.
+
+| Development val823 model | Macro-F1 | Accuracy | Fixed A wrong-to-right / right-to-wrong |
+| --- | --- | --- | --- |
+| Frozen VideoMAE A | 89.70% | 91.01% | 0 / 0 |
+| Historical ordinary TCN | 90.39% | 91.74% | 8 / 2 |
+| Clip-only capacity control | 89.98% | 91.49% | 7 / 3 |
+| Ordinary TCN continue | 90.31% | 91.98% | 13 / 5 |
+| Ordinary TCN augmentation | 90.06% | 91.62% | 9 / 4 |
+| Context increment, no augmentation | 90.79% | 92.10% | 9 / 0 |
+| Context increment, augmentation | 90.47% | 91.74% | 6 / 0 |
+| Context increment, augmentation and coefficient | 90.44% | 92.10% | 13 / 4 |
+
+Accuracy is from the same selected best-F1 checkpoint, not its best accuracy
+epoch. All numbers are exploratory development results, not independent tests.
+The ungated no-augmentation model retains six of the historical eight fixes and
+prevents its two harms, but loses two fixes. Sweep-to-reperfusion errors are
+20 versus historical TCN's 18; reverse errors are 14 versus 15. The overall F1
+gain does not establish that this specific FSN confusion has been solved.
+
+FSN has distinguishable practitioner needle/hand manipulation and participant
+muscle/joint movement; swaying and reperfusion can accompany each other, and
+reperfusion appearances differ by body region. This motivates preserving
+current-clip visual evidence rather than enforcing a universal phase order.
+These are visual task motivations, not treatment or efficacy claims. Relevant
+primary descriptions: [FSN operations](https://pmc.ncbi.nlm.nih.gov/articles/PMC8938053/)
+and [accompanying reperfusion / body-region variation](https://pmc.ncbi.nlm.nih.gov/articles/PMC11232289/).
+This implementation does not explicitly detect practitioners, patients, hands,
+needles, occlusion or co-occurrence; those distinctions require a separate
+annotation/visibility audit before proposing such a branch or changing labels.
+
+The 156 isolated validation clips receive exact A predictions in context variants.
+Neither source names nor identity metadata enter model forward; source-kind
+appears only in training donor eligibility and post-hoc evaluation strata.
+Source policy is not verified natural edit-boundary truth. Irregular clip chains
+are not uniformly sampled frame sequences: val chains have median two clips and
+maximum ten, so this is not evidence that an hour-scale memory is required.
+
+The confidence coefficient has no classification advantage over g=1 on its
+same checkpoint. A genuine distribution-preserving permutation changes 821
+coefficients (665 on nonzero contextual positions) and obtains 90.77% F1,
+above the learned 90.44%. Thus this round does not support useful learned
+position-specific acceptance. The fixed 244-anchor synthetic challenge changes
+logits but zero predictions for all three contextual-increment variants; this
+is insufficient to establish robustness to real edited videos.
+
+Novelty must not be claimed for generic confidence gating or subtraction alone:
+[DSTED](https://link.springer.com/article/10.1007/s11548-026-03642-y) already uses
+VideoMAE-V2 with reliable memory and confidence-driven gating, and
+[counterfactual debiasing for compositional action recognition](https://research.ibm.com/publications/counterfactual-debiasing-inference-for-compositional-action-recognition)
+already uses subtraction of a counterpart prediction. The FSN-specific proposed
+contribution remains a testable separation of current-clip evidence and incremental
+context, with preservation of corrections and fewer harmful changes. It still
+needs mature temporal-head comparisons, independent records and stability checks.
