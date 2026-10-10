@@ -141,7 +141,7 @@ solely from one repeated-use validation split.
 ## 3. Visual-backbone comparison (first screen)
 
 Pass the same full manifests and 36-frame cache already used by the VideoMAE
-V2 run. The script validates the manifest SHA, class coverage, cache mapping, cache metadata, and the existing A index SHA/schema/clip coverage before creating an output directory. Add --existing-a-index pointing to the same sealed VideoMAE features index.jsonl used by the temporal benchmark. It may need internet access
+V2 run. The script validates the manifest SHA, class coverage, cache mapping, cache metadata, and the existing A index SHA/schema/clip coverage before creating an output directory. Add --existing-a-index pointing to the same sealed VideoMAE features index.jsonl used by the temporal benchmark and --reference-source-protocol-dir pointing to the matching source-protocol directory whose audit hash is recorded in the export seal. It may need internet access
 to fetch the named torchvision Kinetics-400 weights if they are not already in
 the local PyTorch weight cache.
 
@@ -153,6 +153,7 @@ python -m experiments.comparison.run_vision_backbone_benchmark \
   --manifest-dir /absolute/path/to/frozen/manifests \
   --cache-dir /absolute/path/to/cache36 \
   --existing-a-index /absolute/path/to/videomae/features/index.jsonl \
+  --reference-source-protocol-dir /absolute/path/to/sealed/source_protocol \
   --output /absolute/path/to/new_private_output/vision_linear_probe_seed42 \
   --device cuda:0 \
   --models mvit_v2_s,swin3d_t,r2plus1d_18 \
