@@ -34,6 +34,8 @@ def temporal_pyramid_pool(tokens: torch.Tensor, levels: tuple[int, ...] = (1, 2,
     """
     if not isinstance(tokens, torch.Tensor) or tokens.ndim != 4:
         raise ValueError("tokens must have shape [batch, clips, positions, channels]")
+    if not levels or any(type(level) is not int or level < 1 for level in levels):
+        raise ValueError("levels must be a nonempty tuple of positive integers")
     positions = tokens.shape[2]
     if positions < max(levels) or any(level < 1 for level in levels):
         raise ValueError("each temporal pyramid level must fit the sampled positions")
@@ -205,7 +207,7 @@ class TemporalContextHead(nn.Module):
 
 
 class DualTimescaleModel(nn.Module):
-    """M1/M2/M3 ablation models; M0 is the unmodified frozen A logits."""
+    """M1S/M1/M2/M2S/M3 ablations; M0 is the unmodified frozen A logits."""
 
     VALID_VARIANTS = ("M1S", "M1", "M2", "M2S", "M3")
 
