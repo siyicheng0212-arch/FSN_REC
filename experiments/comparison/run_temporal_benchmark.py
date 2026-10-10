@@ -1,7 +1,8 @@
 """Benchmark temporal heads on the same sealed frozen-VideoMAE evidence.
 
-Models: frozen A, clip-wise MLP, BiGRU, residual TCN, an MS-TCN++-inspired
-multi-stage clip-sequence refiner, and an ASFormer-inspired local Transformer.
+Models: frozen A, a train-only Markov/Viterbi decoder, clip-wise MLP, BiGRU,
+residual TCN, an MS-TCN++-inspired multi-stage clip-sequence refiner, and an
+ASFormer-inspired local Transformer.
 The two literature-inspired models are adaptations to clip-level seven-class
 sequence classification, not faithful reproductions of dense action segmentation.
 """
