@@ -261,3 +261,86 @@ class TemporalComparisonModel(nn.Module):
     @property
     def parameter_count(self) -> int:
         return sum(parameter.numel() for parameter in self.parameters())
+
+def estimate_transition_log_probs(train_segments, smoothing: float = 1.0) -> torch.Tensor:
+    """Estimate a smoothed first-order label transition prior from train-only legal chains."""
+    if not math.isfinite(smoothing) or smoothing <= 0:
+        raise ValueError("smoothing must be positive and finite")
+    counts = torch.full((NUM_CLASSES, NUM_CLASSES), float(smoothing), dtype=torch.float64)
+    pairs = 0
+    for segment in train_segments:
+        labels = [int(value) for value in segment.labels.tolist()]
+        if any(value < 0 or value >= NUM_CLASSES for value in labels):
+            raise ValueError("training chain contains an invalid class label")
+        for previous, current in zip(labels, labels[1:]):
+            counts[previous, current] += 1
+            pairs += 1
+    if pairs == 0:
+        raise ValueError("cannot estimate a first-order prior without eligible training adjacencies")
+    probabilities = counts / counts.sum(dim=1, keepdim=True)
+    return probabilities.log().to(torch.float32)
+
+
+class MarkovViterbiDecoder(nn.Module):
+    """Non-neural first-order transition-prior baseline over each eligible chain."""
+
+    def __init__(self, transition_log_probs: torch.Tensor, transition_strength: float = 0.25):
+        super().__init__()
+        if transition_log_probs.shape != (NUM_CLASSES, NUM_CLASSES):
+            raise ValueError("transition_log_probs must have shape [7,7]")
+        if not bool(torch.isfinite(transition_log_probs).all()):
+            raise ValueError("transition log-probabilities must be finite")
+        if not math.isfinite(transition_strength) or transition_strength < 0:
+            raise ValueError("transition_strength must be finite and nonnegative")
+        self.register_buffer("transition_log_probs", transition_log_probs.detach().clone())
+        self.transition_strength = float(transition_strength)
+
+    @property
+    def parameter_count(self) -> int:
+        return 0
+
+    @staticmethod
+    def _decode_one(emission_logits: torch.Tensor, log_transition: torch.Tensor,
+                    transition_strength: float) -> torch.Tensor:
+        if emission_logits.ndim != 2 or emission_logits.shape[1] != NUM_CLASSES:
+            raise ValueError("emission logits must have shape [length,7]")
+        if emission_logits.shape[0] < 1:
+            raise ValueError("cannot decode an empty chain")
+        emission = F.log_softmax(emission_logits.float(), dim=-1)
+        scores = emission[0]
+        backpointers = []
+        for timestep in range(1, emission.shape[0]):
+            candidate = scores[:, None] + transition_strength * log_transition
+            best_scores, best_previous = candidate.max(dim=0)
+            scores = best_scores + emission[timestep]
+            backpointers.append(best_previous)
+        last = int(scores.argmax().item())
+        path = [last]
+        for pointer in reversed(backpointers):
+            last = int(pointer[last].item())
+            path.append(last)
+        path.reverse()
+        return torch.tensor(path, dtype=torch.long, device=emission_logits.device)
+
+    def forward(self, global_tokens: torch.Tensor, local_tokens: torch.Tensor,
+                a_logits: torch.Tensor, valid: torch.Tensor) -> torch.Tensor:
+        if a_logits.ndim != 3 or a_logits.shape[-1] != NUM_CLASSES:
+            raise ValueError("A logits must have shape [batch, clips,7]")
+        if valid.shape != a_logits.shape[:2] or valid.dtype != torch.bool:
+            raise ValueError("valid must be a boolean [batch,clips] mask")
+        if not bool(valid.any(dim=1).all()):
+            raise ValueError("every chain must contain at least one valid clip")
+        output = torch.zeros_like(a_logits)
+        for row in range(a_logits.shape[0]):
+            row_valid = valid[row]
+            length = int(row_valid.sum().item())
+            if not bool(row_valid[:length].all()) or bool(row_valid[length:].any()):
+                raise ValueError("valid positions must be contiguous and left-aligned")
+            path = self._decode_one(
+                a_logits[row, :length], self.transition_log_probs,
+                self.transition_strength,
+            )
+            output[row, :length] = -1e4
+            output[row, torch.arange(length, device=output.device), path] = 0.0
+        return output
+
