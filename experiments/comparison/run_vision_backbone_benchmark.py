@@ -67,8 +67,7 @@ def _load_existing_a_reference(index_path: Path, source_protocol_dir: Path, data
         for split in ("train", "val")
     }
     if (
-        seal.get("schema") != "fsn-videomae2-source-relation-evidence-v1"
-        or seal.get("status") != "complete"
+        seal.get("status") != "complete"
         or seal.get("A_frozen") is not True
         or seal.get("index_sha256") != sha256_file(index_path)
         or seal.get("checkpoint_sha256") != index.checkpoint_sha256
@@ -80,6 +79,22 @@ def _load_existing_a_reference(index_path: Path, source_protocol_dir: Path, data
         or actual_split_counts != data_audit["counts"]
     ):
         raise ValueError("existing VideoMAE A export does not match the sealed visual benchmark protocol")
+
+    suite_root = source_protocol_dir.parent
+    prior_seal_path = suite_root / "evaluation" / "private_protocol.json"
+    prior_summary_path = suite_root / "evaluation" / "public_safe_summary.json"
+    if not prior_seal_path.is_file() or not prior_summary_path.is_file():
+        raise FileNotFoundError("completed sealed source-protocol evaluation artifacts are required")
+    prior_seal = json.loads(prior_seal_path.read_text(encoding="utf-8"))
+    prior_summary = json.loads(prior_summary_path.read_text(encoding="utf-8"))
+    expected_prior = {
+        "index_sha256": sha256_file(index_path),
+        "source_audit_sha256": sha256_file(audit_path),
+        "checkpoint_sha256": index.checkpoint_sha256,
+        "chains_sha256": sha256_file(source_protocol_dir / "chains_val.jsonl"),
+    }
+    if any(prior_seal.get(key) != value for key, value in expected_prior.items()):
+        raise ValueError("existing A index and source-protocol evaluation do not share exact seals")
 
     expected_ids = {
         split: {record.clip_id for record in dataset.base.records}
@@ -132,12 +147,12 @@ def _load_existing_a_reference(index_path: Path, source_protocol_dir: Path, data
         torch.as_tensor(targets, dtype=torch.long),
         metadata,
     )
-    sealed_metrics = seal.get("A_val_metrics")
+    sealed_metrics = prior_summary.get("variants", {}).get("A_only", {})
     if not isinstance(sealed_metrics, dict):
-        raise ValueError("existing A export seal has no validation metric record")
+        raise ValueError("source-protocol evaluation has no A-only validation metrics")
     for key in ("accuracy", "macro_f1", "confusion"):
         if metrics["all"].get(key) != sealed_metrics.get(key):
-            raise ValueError(f"current A val823 replay differs from export seal: {key}")
+            raise ValueError(f"current A val823 replay differs from sealed source-protocol metrics: {key}")
     return {
         "index_path": str(index_path),
         "index_sha256": sha256_file(index_path),
