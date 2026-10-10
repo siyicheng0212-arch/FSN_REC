@@ -72,7 +72,7 @@ The experimental dual-timescale branch now includes two separate benchmark
 tracks:
 
 - **Temporal heads on the same frozen VideoMAE evidence:** [comparison README](comparison/README.md), [runner](comparison/run_temporal_benchmark.py). It compares the clip-only MLP, BiGRU, current TCN, multi-stage TCN-inspired refinement and an ASFormer-inspired local Transformer.
-- **Visual backbones on the same train7372/val823 data protocol:** [runner](comparison/run_vision_backbone_benchmark.py). It includes Kinetics-400-pretrained MViT-V2-S, Video Swin-T and R(2+1)D-18; both linear-probe screening and full fine-tuning modes are supported.
+- **Visual backbones on the same train7372/val823 data protocol:** [runner](comparison/run_vision_backbone_benchmark.py). It includes Kinetics-400-pretrained MViT-V2-S, Video Swin-T and R(2+1)D-18, plus frozen linear-probe adapters for V-JEPA 2 ViT-L and InternVideo-Next Base. Full fine-tuning is supported only for the three torchvision Kinetics alternatives; the foundation adapters are screening-only.
 
 See [the comparison protocol config](../configs/comparison_benchmarks.json) for
 the registered model list and literature. These scripts have been committed but
