@@ -36,7 +36,7 @@ from experiments.dual_timescale.run import (
 from experiments.comparison.temporal_models import TemporalComparisonModel, VALID_MODELS
 
 
-VARIANTS = ("A_only", *VALID_MODELS)
+VARIANTS = ("a_only", *VALID_MODELS)
 
 
 def _safe_output(path: Path, protected: tuple[Path, ...]) -> Path:
@@ -251,7 +251,7 @@ def run(args):
             print(f"starting temporal head {model_name}", flush=True)
             model_dir = output / model_name
             model_dir.mkdir()
-            if model_name == "A_only":
+            if model_name == "a_only":
                 metrics, private_rows = _evaluate(None, val_loader, torch.device("cpu"))
                 result = {
                     "model_name": model_name,
@@ -271,7 +271,7 @@ def run(args):
                 "completed_models": list(results),
             })
 
-        baseline_f1 = results["A_only"]["metrics"]["macro_f1"] if "A_only" in results else None
+        baseline_f1 = results["a_only"]["metrics"]["macro_f1"] if "a_only" in results else None
         comparison = {
             name: {
                 "macro_f1": row["metrics"]["macro_f1"],
@@ -293,7 +293,7 @@ def run(args):
             "frozen_feature_checkpoint_sha256": index.checkpoint_sha256,
             "source_policy_is_weak_adjacency_metadata_not_verified_continuity": True,
             "model_definitions": {
-                "A_only": "original frozen VideoMAE logits",
+                "a_only": "original frozen VideoMAE logits",
                 "mlp": "per-clip residual MLP with no neighbor access",
                 "bigru": "two-layer bidirectional GRU over candidate-clip sequence",
                 "tcn": "current residual dilated TCN baseline",
@@ -327,7 +327,7 @@ def parse_args(argv=None):
     parser.add_argument("--source-protocol-dir", required=True, help="exact source protocol directory")
     parser.add_argument("--output", required=True, help="fresh private output directory")
     parser.add_argument("--device", default="cuda")
-    parser.add_argument("--models", default="A_only,mlp,bigru,tcn,mstcnpp_adapted,local_transformer")
+    parser.add_argument("--models", default="a_only,mlp,bigru,tcn,mstcnpp_adapted,local_transformer")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--patience", type=int, default=5)
