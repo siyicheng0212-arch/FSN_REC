@@ -138,7 +138,7 @@ def _preflight(index_path: Path, source_dir: Path):
         or export_protocol.get("A_frozen") is not True
         or export_protocol.get("index_sha256") != sha256_file(index_path)
         or export_protocol.get("data_protocol") != DATA_PROTOCOL
-        or export_protocol.get("counts") != EXPECTED_COUNTS
+        or export_protocol.get("split_counts") != EXPECTED_COUNTS
         or export_protocol.get("train_manifest_sha256") != EXPECTED_MANIFEST_SHA["train"]
         or export_protocol.get("val_manifest_sha256") != EXPECTED_MANIFEST_SHA["val"]
         or export_protocol.get("test_read") is not False
@@ -191,14 +191,16 @@ def _preflight(index_path: Path, source_dir: Path):
         if covered != counts[split]:
             raise ValueError(f"{split} chains cover {covered}, expected {counts[split]} clips")
 
-    for split in ("train", "val"):
-        labels = np.concatenate([segment.labels for segment in split_segments[split]])
-        predictions = np.concatenate([segment.a_logits.argmax(1) for segment in split_segments[split]])
-        replay = classification_metrics(labels, predictions)
-        expected_a = prior_summary.get("variants", {}).get("A_only", {})
-        for key in ("accuracy", "macro_f1", "confusion"):
-            if replay[key] != expected_a.get(key):
-                raise ValueError(f"frozen A {split} replay differs from sealed source suite: {key}")
+    # The existing sealed suite contains the original A-only validation metrics.
+    # Only val replay can be compared with those metrics; train is not compared
+    # against validation statistics.
+    labels = np.concatenate([segment.labels for segment in split_segments["val"]])
+    predictions = np.concatenate([segment.a_logits.argmax(1) for segment in split_segments["val"]])
+    replay = classification_metrics(labels, predictions)
+    expected_a = prior_summary.get("variants", {}).get("A_only", {})
+    for key in ("accuracy", "macro_f1", "confusion"):
+        if replay[key] != expected_a.get(key):
+            raise ValueError(f"frozen A val replay differs from sealed source suite: {key}")
 
     return index, metadata, split_segments, audit, expected_prior
 
