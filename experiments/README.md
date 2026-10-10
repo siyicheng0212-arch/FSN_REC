@@ -65,3 +65,16 @@ deterministically repeats the nearest decoded frames to keep the input shape
 fixed. Cache metadata records `pixel_unique_frames` and
 `pixel_repeat_fraction`; primary results must be accompanied by a sensitivity
 analysis with these very short clips excluded.
+
+## New controlled model comparisons
+
+The experimental dual-timescale branch now includes two separate benchmark
+tracks:
+
+- **Temporal heads on the same frozen VideoMAE evidence:** [comparison README](comparison/README.md), [runner](comparison/run_temporal_benchmark.py). It compares the clip-only MLP, BiGRU, current TCN, multi-stage TCN-inspired refinement and an ASFormer-inspired local Transformer.
+- **Visual backbones on the same train7372/val823 data protocol:** [runner](comparison/run_vision_backbone_benchmark.py). It includes Kinetics-400-pretrained MViT-V2-S, Video Swin-T and R(2+1)D-18; both linear-probe screening and full fine-tuning modes are supported.
+
+See [the comparison protocol config](../configs/comparison_benchmarks.json) for
+the registered model list and literature. These scripts have been committed but
+have **not** been trained or run in the user's GPU environment. Their val823
+scores are development results, not independent-test results.
