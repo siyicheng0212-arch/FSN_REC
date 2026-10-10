@@ -19,7 +19,7 @@ DEFAULT_DILATIONS = (1, 2, 4)
 
 
 def _validate_dilations(blocks: int, dilations: tuple[int, ...] | None) -> tuple[int, ...]:
-    schedule = DEFAULT_DILATIONS[:blocks] if dilations is None else tuple(dilations)
+    schedule = tuple(2 ** level for level in range(blocks)) if dilations is None else tuple(dilations)
     if len(schedule) != blocks or any(type(item) is not int or item < 1 for item in schedule):
         raise ValueError("dilations must contain one positive integer per block")
     return schedule
