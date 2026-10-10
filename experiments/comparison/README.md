@@ -42,6 +42,7 @@ chains:
 | Model | What it tests | Status |
 |---|---|---|
 | a_only | No learned temporal head | Mandatory reference |
+| markov_viterbi | Train-only, Laplace-smoothed first-order label transition prior with Viterbi decoding | Simple class-order prior baseline; tests whether a neural head adds value beyond a basic transition model |
 | mlp | Trainable per-clip correction without neighbors | Capacity/no-context control |
 | bigru | Bidirectional recurrent context | Strong surgical-activity-style sequential baseline |
 | tcn | Current residual dilated TCN | Existing temporal baseline |
@@ -61,6 +62,9 @@ be official or exact reproductions, and their dense-segmentation paper scores
 are not directly comparable to FSN clip-level Macro-F1. The source-protocol
 chains have median length 2 and maximum length 10 in the prior audit, so report
 chain-length support and don't overstate evidence about very long-range context.
+The Markov prior is estimated strictly from train-only labels on these eligible
+chains, with Laplace smoothing; it is a simple order-prior control, not verified
+clinical workflow truth.
 
 ## Data and fairness contract
 
@@ -121,7 +125,8 @@ python -m experiments.comparison.run_temporal_benchmark \
   --source-protocol-dir /absolute/path/to/sealed/source_protocol \
   --output /absolute/path/to/new_private_output/temporal_heads_seed42 \
   --device cuda:0 \
-  --models a_only,mlp,bigru,tcn,mstcnpp_adapted,local_transformer \
+  --models a_only,markov_viterbi,mlp,bigru,tcn,mstcnpp_adapted,local_transformer \
+  --markov-smoothing 1.0 --markov-strength 0.25
   --seed 42 --epochs 30 --patience 5 \
   --batch-size-segments 16 --hidden-dim 64 --dropout 0.1 \
   --tcn-dilations 1,2,4 \
