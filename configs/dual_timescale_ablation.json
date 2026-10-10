@@ -24,7 +24,9 @@
   },
   "within_clip": {
     "enabled_for": [
+      "M1S",
       "M1",
+      "M2S",
       "M3"
     ],
     "temporal_bins": [
@@ -34,11 +36,20 @@
     ],
     "pooled_bins": 7,
     "embedding_dim": 128,
-    "zero_initialized_logit_correction": true
+    "zero_initialized_logit_correction": true,
+    "multiscale_enabled_for": [
+      "M1",
+      "M3"
+    ],
+    "single_scale_parameter_matched_controls": [
+      "M1S",
+      "M2S"
+    ]
   },
   "inter_clip": {
     "enabled_for": [
       "M2",
+      "M2S",
       "M3"
     ],
     "blocks": 3,
@@ -95,7 +106,15 @@
     "learning_rate": 0.001,
     "weight_decay": 0.01,
     "gradient_clip_norm": 5,
-    "checkpoint_selection": "full seven-class val823 Macro-F1; earliest tie"
+    "checkpoint_selection": "full seven-class val823 Macro-F1; earliest tie",
+    "variants": [
+      "M0",
+      "M1S",
+      "M1",
+      "M2",
+      "M2S",
+      "M3"
+    ]
   },
   "outputs_contain_private_clip_ids": true,
   "independent_test_available": false,
