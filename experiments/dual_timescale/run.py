@@ -1,8 +1,10 @@
 """Train and compare frozen-VideoMAE dual-timescale ablations M0, M1S, M1, M2, M2S and M3.
 
 M0: original A logits; no learned parameters.
+M1S: single-scale mean-pooling head only, parameter-matched to M1.
 M1: within-clip multi-scale feature pooling only.
 M2: inter-clip TCN only, on the existing mean-pooled frozen evidence.
+M2S: single-scale mean-pooling head plus inter-clip TCN, matched to M3.
 M3: within-clip multi-scale branch plus inter-clip TCN.
 
 Only the fixed train7372/val823 development protocol is used. No test split is
