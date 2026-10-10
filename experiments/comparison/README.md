@@ -81,12 +81,22 @@ supports:
 - **finetune**: train the whole backbone and head. Use this mode for the more
   meaningful fine-tuned backbone comparison to the existing fine-tuned A model.
 
-The visual model wrapper uses Kinetics weights' corresponding normalization. The
-source cache is already a square 224 crop, so model input resolution is 224 for
-MViT/Swin and 112 for R(2+1)D, matching the latter's smaller standard input
-scale. All three use the same 16 frame indices. This choice is recorded in each
-model audit; it is a controlled practical comparison, not a claim that all
-original benchmark preprocessing has been reproduced exactly.
+The visual model wrapper uses the corresponding torchvision Kinetics weight
+normalization and resize/center-crop geometry after the existing square cache.
+MViT and Swin receive 224-square crops; R(2+1)D receives the standard 112-square
+crop after its 128x171 resize. All alternatives use the same 16 temporal sample
+indices. Because the original videos were center-cropped to 224 when cached,
+these transforms cannot recover the uncropped original frame, and that limitation
+is recorded in each model audit.
+
+**Interpret the linear-probe run only as a low-cost screening test.** The
+existing `videomae_v2_A_reference` row is an already FSN-finetuned checkpoint,
+whereas linear-probe alternatives keep their Kinetics-400 backbone frozen.
+Therefore, do not attribute score differences in the linear-probe run solely
+to architecture. For the main paper backbone comparison, use `--mode finetune`
+for the alternative models and report their training recipe and the existing A
+checkpoint's provenance explicitly; the existing A row is a sealed reference,
+not a same-optimizer retraining of VideoMAE-V2.
 
 The temporal benchmark uses one fixed set of VideoMAE per-tubelet global/local
 features and A logits. It does not re-extract visual features and does not read
