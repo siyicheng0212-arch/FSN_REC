@@ -10,7 +10,9 @@ from experiments.comparison.temporal_models import (
     TemporalComparisonModel,
     estimate_transition_log_probs,
 )
-from experiments.comparison.vision_models import VISION_BACKBONES, _replace_last_linear
+from experiments.comparison.vision_models import (
+    KineticsVideoClassifier, VISION_BACKBONES, _replace_last_linear,
+)
 
 
 class TemporalComparisonTest(unittest.TestCase):
@@ -138,6 +140,34 @@ class TemporalComparisonTest(unittest.TestCase):
             for parameter in model.parameters()
         ))
         optimizer.step()
+
+
+
+    def test_video_wrapper_uses_16_frames_and_registered_spatial_size(self):
+        class CaptureCore(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.fc = torch.nn.Linear(3, 7)
+                self.last_shape = None
+
+            def forward(self, video):
+                self.last_shape = tuple(video.shape)
+                pooled = video.mean(dim=(2, 3, 4))
+                return self.fc(pooled)
+
+        expected_sizes = {
+            "mvit_v2_s": 224,
+            "swin3d_t": 224,
+            "r2plus1d_18": 112,
+        }
+        raw = torch.randint(0, 256, (1, 36, 3, 224, 224), dtype=torch.uint8)
+        for name, size in expected_sizes.items():
+            with self.subTest(name=name):
+                core = CaptureCore()
+                wrapper = KineticsVideoClassifier(name, core, "fc", "synthetic-test")
+                output = wrapper(raw)
+                self.assertEqual(tuple(output.shape), (1, 7))
+                self.assertEqual(core.last_shape, (1, 3, 16, size, size))
 
 
 class VisionWrapperTest(unittest.TestCase):
