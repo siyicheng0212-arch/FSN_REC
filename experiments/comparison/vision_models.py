@@ -45,20 +45,23 @@ class KineticsVideoClassifier(nn.Module):
         "mvit_v2_s": {
             "mean": (0.45, 0.45, 0.45),
             "std": (0.225, 0.225, 0.225),
-            "spatial_size": 224,
-            "geometry_note": "16 uniform frames; original 224-square cached crop; Kinetics MViT normalization",
+            "resize_size": (256, 256),
+            "crop_size": 224,
+            "geometry_note": "16 uniform frames; resize cached square crop to 256 then center-crop 224; Kinetics MViT normalization",
         },
         "swin3d_t": {
             "mean": (0.485, 0.456, 0.406),
             "std": (0.229, 0.224, 0.225),
-            "spatial_size": 224,
-            "geometry_note": "16 uniform frames; original 224-square cached crop; ImageNet normalization from torchvision weight recipe",
+            "resize_size": (256, 256),
+            "crop_size": 224,
+            "geometry_note": "16 uniform frames; resize cached square crop to 256 then center-crop 224; Swin3D-T Kinetics normalization",
         },
         "r2plus1d_18": {
             "mean": (0.43216, 0.394666, 0.37645),
             "std": (0.22803, 0.22145, 0.216989),
-            "spatial_size": 112,
-            "geometry_note": "16 uniform frames; resize cached square crop to 112; Kinetics R(2+1)D normalization",
+            "resize_size": (128, 171),
+            "crop_size": 112,
+            "geometry_note": "16 uniform frames; resize to 128x171 then center-crop 112x112; R(2+1)D Kinetics normalization",
         },
     }
 
@@ -95,14 +98,20 @@ class KineticsVideoClassifier(nn.Module):
             raise ValueError("expected the sealed 36-frame, 224-square uint8 RGB cache")
         indices = torch.as_tensor(self.frame_indices, device=raw_video.device)
         frames = raw_video.index_select(1, indices).float().div_(255.0)
-        size = self.preprocess["spatial_size"]
-        if size != 224:
-            batch, count = frames.shape[:2]
-            flattened = frames.reshape(batch * count, 3, 224, 224)
-            flattened = F.interpolate(
-                flattened, size=(size, size), mode="bilinear", align_corners=False
-            )
-            frames = flattened.reshape(batch, count, 3, size, size)
+        batch, count = frames.shape[:2]
+        resized_height, resized_width = self.preprocess["resize_size"]
+        crop_size = self.preprocess["crop_size"]
+        flattened = frames.reshape(batch * count, 3, 224, 224)
+        flattened = F.interpolate(
+            flattened,
+            size=(resized_height, resized_width),
+            mode="bilinear",
+            align_corners=False,
+        )
+        top = (resized_height - crop_size) // 2
+        left = (resized_width - crop_size) // 2
+        flattened = flattened[:, :, top:top + crop_size, left:left + crop_size]
+        frames = flattened.reshape(batch, count, 3, crop_size, crop_size)
         mean = frames.new_tensor(self.preprocess["mean"]).view(1, 1, 3, 1, 1)
         std = frames.new_tensor(self.preprocess["std"]).view(1, 1, 3, 1, 1)
         frames = (frames - mean) / std
