@@ -156,7 +156,16 @@ def _load_existing_a_reference(index_path: Path, source_protocol_dir: Path, data
         "confusion": "confusion_matrix",
     }
     for sealed_key, local_key in key_pairs.items():
-        if metrics["all"].get(local_key) != sealed_metrics.get(sealed_key):
+        actual_value = metrics["all"].get(local_key)
+        expected_value = sealed_metrics.get(sealed_key)
+        if local_key == "confusion_matrix":
+            matches = actual_value == expected_value
+        else:
+            matches = (
+                isinstance(expected_value, (int, float))
+                and math.isclose(float(actual_value), float(expected_value), rel_tol=0.0, abs_tol=1e-12)
+            )
+        if not matches:
             raise ValueError(
                 f"current A val823 replay differs from sealed source-protocol metrics: {sealed_key}"
             )
