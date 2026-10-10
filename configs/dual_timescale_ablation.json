@@ -1,0 +1,93 @@
+{
+  "name": "fsn_dual_timescale_clip_and_context_ablation",
+  "status": "code_ready_not_trained",
+  "task": "clip-level seven-class recognition from pre-cut clips",
+  "data_protocol": "fsn-full-7372-823-development-v1",
+  "expected_counts": {
+    "train": 7372,
+    "val": 823
+  },
+  "test_read": false,
+  "frozen_backbone": "VideoMAE ViT-B/16",
+  "input_evidence": {
+    "global_tokens": [
+      8,
+      768
+    ],
+    "local_tokens": [
+      8,
+      768
+    ],
+    "a_logits": [
+      7
+    ]
+  },
+  "within_clip": {
+    "enabled_for": [
+      "M1",
+      "M3"
+    ],
+    "temporal_bins": [
+      1,
+      2,
+      4
+    ],
+    "pooled_bins": 7,
+    "embedding_dim": 128,
+    "zero_initialized_logit_correction": true
+  },
+  "inter_clip": {
+    "enabled_for": [
+      "M2",
+      "M3"
+    ],
+    "blocks": 3,
+    "hidden_dim": 64,
+    "kernel_size": 3,
+    "dilations": [
+      1,
+      2,
+      4
+    ],
+    "theoretical_receptive_field_candidate_clips": 15,
+    "offline_bidirectional": true,
+    "respects_sealed_structural_cuts": true
+  },
+  "cells": {
+    "M0": {
+      "within_clip": false,
+      "inter_clip": false,
+      "description": "frozen VideoMAE A"
+    },
+    "M1": {
+      "within_clip": true,
+      "inter_clip": false,
+      "description": "within-clip multi-scale only"
+    },
+    "M2": {
+      "within_clip": false,
+      "inter_clip": true,
+      "description": "inter-clip TCN only"
+    },
+    "M3": {
+      "within_clip": true,
+      "inter_clip": true,
+      "description": "joint within-clip multi-scale and inter-clip TCN"
+    }
+  },
+  "training": {
+    "seed": 42,
+    "variants_serial": true,
+    "max_epochs": 30,
+    "early_stopping_patience": 5,
+    "batch_size_segments": 16,
+    "optimizer": "AdamW",
+    "learning_rate": 0.001,
+    "weight_decay": 0.01,
+    "gradient_clip_norm": 5,
+    "checkpoint_selection": "full seven-class val823 Macro-F1; earliest tie"
+  },
+  "outputs_contain_private_clip_ids": true,
+  "independent_test_available": false,
+  "training_started": false
+}
