@@ -60,6 +60,7 @@ class MultiScaleClipEncoder(nn.Module):
         embedding_dim: int = 128,
         dropout: float = 0.1,
         levels: tuple[int, ...] = (1, 2, 4),
+        pooling_mode: str = "multiscale",
     ):
         super().__init__()
         if min(global_dim, local_dim, embedding_dim) < 1:
@@ -71,7 +72,10 @@ class MultiScaleClipEncoder(nn.Module):
         self.global_dim = global_dim
         self.local_dim = local_dim
         self.embedding_dim = embedding_dim
+        if pooling_mode not in {"multiscale", "mean_control"}:
+            raise ValueError("pooling_mode must be 'multiscale' or 'mean_control'")
         self.levels = tuple(levels)
+        self.pooling_mode = pooling_mode
         self.token_projection = nn.Sequential(
             nn.Linear(global_dim + local_dim, embedding_dim),
             nn.LayerNorm(embedding_dim),
@@ -110,8 +114,17 @@ class MultiScaleClipEncoder(nn.Module):
             raise ValueError("sampled positions do not support the requested temporal pyramid")
         tokens = torch.cat((global_tokens, local_tokens), dim=-1)
         projected = self.token_projection(tokens)
-        pyramid = temporal_pyramid_pool(projected, self.levels)
-        embedding = self.fusion(pyramid)
+        if self.pooling_mode == "multiscale":
+            pooled = temporal_pyramid_pool(projected, self.levels)
+        else:
+            # Same projection and fusion layers as the multiscale model, but
+            # repeat the same global temporal mean into each of the seven bins.
+            # This is a parameter-matched control for extra head capacity.
+            mean = projected.mean(dim=2)
+            pooled = mean.unsqueeze(2).expand(
+                *mean.shape[:2], sum(self.levels), mean.shape[-1]
+            ).reshape(*mean.shape[:2], -1)
+        embedding = self.fusion(pooled)
         correction = self.class_correction(embedding)
         mask = valid.unsqueeze(-1).to(embedding.dtype)
         return embedding * mask, correction * mask
@@ -194,7 +207,7 @@ class TemporalContextHead(nn.Module):
 class DualTimescaleModel(nn.Module):
     """M1/M2/M3 ablation models; M0 is the unmodified frozen A logits."""
 
-    VALID_VARIANTS = ("M1", "M2", "M3")
+    VALID_VARIANTS = ("M1S", "M1", "M2", "M2S", "M3")
 
     def __init__(
         self,
@@ -218,19 +231,24 @@ class DualTimescaleModel(nn.Module):
         self.blocks_count = blocks
         self.dropout_rate = dropout
         self.dilations = _validate_dilations(blocks, dilations)
+        uses_clip_head = variant in {"M1S", "M1", "M2S", "M3"}
+        pooling_mode = "mean_control" if variant in {"M1S", "M2S"} else "multiscale"
         self.clip_encoder = (
-            MultiScaleClipEncoder(global_dim, local_dim, embedding_dim, dropout)
-            if variant in {"M1", "M3"} else None
+            MultiScaleClipEncoder(
+                global_dim, local_dim, embedding_dim, dropout,
+                pooling_mode=pooling_mode,
+            )
+            if uses_clip_head else None
         )
         if variant == "M2":
             context_dim = global_dim + local_dim
-        elif variant == "M3":
+        elif variant in {"M2S", "M3"}:
             context_dim = global_dim + local_dim + embedding_dim
         else:
             context_dim = 0
         self.context_head = (
             TemporalContextHead(context_dim, hidden_dim, blocks, dropout, self.dilations)
-            if variant in {"M2", "M3"} else None
+            if variant in {"M2", "M2S", "M3"} else None
         )
 
     def forward(
@@ -261,11 +279,11 @@ class DualTimescaleModel(nn.Module):
             embedding, clip_delta = self.clip_encoder(global_tokens, local_tokens, valid)
             base_logits = a_logits + clip_delta
 
-        if self.variant == "M1":
+        if self.variant in {"M1S", "M1"}:
             return base_logits
         if self.variant == "M2":
             return self.context_head(base_features, base_logits, valid)
-        if self.variant == "M3":
+        if self.variant in {"M2S", "M3"}:
             context_features = torch.cat((base_features, embedding), dim=-1)
             return self.context_head(context_features, base_logits, valid)
         raise AssertionError("validated variant became unreachable")
