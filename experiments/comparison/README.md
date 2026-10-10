@@ -9,12 +9,13 @@ tests before any GPU run.
 ### Visual backbones
 
 The current main reference is the fine-tuned VideoMAE-V2 ViT-B/16 frozen-A
-checkpoint. The alternatives in the visual runner cover three distinct model
+checkpoint. The visual runner now includes this **exact sealed A logit export**
+as a reference row on the same val823 clips, alongside three alternative model
 families:
 
 | Backbone | Model family | Pretraining used by code | Reason to include |
 |---|---|---|---|
-| Current VideoMAE-V2 ViT-B/16 | Masked-video-pretrained ViT | Existing FSN-finetuned K710-distilled checkpoint | Existing A-only reference; val Macro-F1 89.70% in the prior seed-42 exploratory report |
+| Current VideoMAE-V2 ViT-B/16 | Masked-video-pretrained ViT | Existing FSN-finetuned K710-distilled checkpoint | Exact sealed A-only reference row; prior seed-42 val Macro-F1 89.70% |
 | MViT-V2-S | Multiscale video Transformer | Torchvision Kinetics-400 supervised weights | Hierarchical spatial-temporal feature scales |
 | Video Swin-T | Local-window video Transformer | Torchvision Kinetics-400 supervised weights | Local spatiotemporal attention with shifted windows |
 | R(2+1)D-18 | Factorized 3D CNN | Torchvision Kinetics-400 supervised weights | Convolutional control with factorized spatial/temporal operations |
@@ -28,8 +29,7 @@ Relevant papers:
 - R(2+1)D: *A Closer Look at Spatiotemporal Convolutions for Action Recognition*, CVPR 2018 — [paper](https://openaccess.thecvf.com/content_cvpr_2018/html/Tran_A_Closer_Look_CVPR_2018_paper.html).
 - X3D is another established efficient 3D-CNN family — [CVPR 2020 paper](https://openaccess.thecvf.com/content_CVPR_2020/html/Feichtenhofer_X3D_Expanding_Architectures_for_Efficient_Video_Recognition_CVPR_2020_paper.html). It is not in the default suite because this comparison intentionally uses the pinned torchvision model/weight API without adding PyTorchVideo dependencies.
 
-The three alternatives are a practical first panel, not proof that all visual
-architectures have been exhausted. They all start from supervised Kinetics-400
+The existing A row is read from the SHA-sealed frozen feature index and checked against the exact manifest/cache protocol. The three alternatives are a practical first panel, not proof that all visual architectures have been exhausted. They all start from supervised Kinetics-400
 weights, while the current VideoMAE-V2 uses a different pretraining recipe and
 has already been fine-tuned on FSN. Report these differences transparently.
 
@@ -136,8 +136,7 @@ solely from one repeated-use validation split.
 ## 3. Visual-backbone comparison (first screen)
 
 Pass the same full manifests and 36-frame cache already used by the VideoMAE
-V2 run. The script validates the manifest SHA, class coverage, cache mapping and
-cache metadata before creating an output directory. It may need internet access
+V2 run. The script validates the manifest SHA, class coverage, cache mapping, cache metadata, and the existing A index SHA/schema/clip coverage before creating an output directory. Add --existing-a-index pointing to the same sealed VideoMAE features index.jsonl used by the temporal benchmark. It may need internet access
 to fetch the named torchvision Kinetics-400 weights if they are not already in
 the local PyTorch weight cache.
 
