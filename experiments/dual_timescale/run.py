@@ -372,8 +372,6 @@ def _train_variant(variant, index, train_segments, val_segments, args, device, v
             losses.append(float(loss.detach().cpu()))
         val_summary, _ = _evaluate(model, val_loader, device)
         score = float(val_summary["macro_f1"])
-        print(f"[{variant}] epoch {epoch}/{args.epochs}: train_loss={float(np.mean(losses)) if losses else 0.0:.6f}; "
-              f"val_macro_f1={score:.6f}; best={best_f1:.6f}", flush=True)
         history.append({
             "epoch": epoch,
             "mean_train_loss": float(np.mean(losses)) if losses else 0.0,
@@ -386,6 +384,8 @@ def _train_variant(variant, index, train_segments, val_segments, args, device, v
             best_state = {key: value.detach().cpu().clone() for key, value in model.state_dict().items()}
         else:
             stale += 1
+        print(f"[{variant}] epoch {epoch}/{args.epochs}: train_loss={float(np.mean(losses)) if losses else 0.0:.6f}; "
+              f"val_macro_f1={score:.6f}; best={best_f1:.6f}", flush=True)
         if stale >= args.patience:
             break
     if best_state is None:
