@@ -48,7 +48,7 @@
     "input_representation": "mean-pooled per-clip global tokens + mean-pooled local tokens + A logits",
     "methods": [
       {
-        "name": "A_only",
+        "name": "a_only",
         "purpose": "frozen current visual model"
       },
       {
