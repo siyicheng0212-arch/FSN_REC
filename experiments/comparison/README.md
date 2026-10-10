@@ -10,8 +10,8 @@ tests before any GPU run.
 
 The current main reference is the fine-tuned VideoMAE-V2 ViT-B/16 frozen-A
 checkpoint. The visual runner now includes this **exact sealed A logit export**
-as a reference row on the same val823 clips, alongside three alternative model
-families:
+as a reference row on the same val823 clips, alongside three Kinetics-supervised
+alternatives and two newer self-supervised foundation-encoder probes:
 
 | Backbone | Model family | Pretraining used by code | Reason to include |
 |---|---|---|---|
@@ -19,6 +19,8 @@ families:
 | MViT-V2-S | Multiscale video Transformer | Torchvision Kinetics-400 supervised weights | Hierarchical spatial-temporal feature scales |
 | Video Swin-T | Local-window video Transformer | Torchvision Kinetics-400 supervised weights | Local spatiotemporal attention with shifted windows |
 | R(2+1)D-18 | Factorized 3D CNN | Torchvision Kinetics-400 supervised weights | Convolutional control with factorized spatial/temporal operations |
+| V-JEPA 2 ViT-L/16 | Self-supervised video foundation encoder | Official V-JEPA 2 ViT-L local checkpoint (target_encoder) | Tests video representations learned through self-supervised feature prediction |
+| InternVideo-Next Base (91M) | Self-supervised video foundation encoder | Pinned Hugging Face checkpoint revliter/internvideo_next_base_p14_res224_f16 | Adds a newer video representation without video-text pretraining |
 
 Relevant papers:
 
@@ -29,9 +31,30 @@ Relevant papers:
 - R(2+1)D: *A Closer Look at Spatiotemporal Convolutions for Action Recognition*, CVPR 2018 — [paper](https://openaccess.thecvf.com/content_cvpr_2018/html/Tran_A_Closer_Look_CVPR_2018_paper.html).
 - X3D is another established efficient 3D-CNN family — [CVPR 2020 paper](https://openaccess.thecvf.com/content_CVPR_2020/html/Feichtenhofer_X3D_Expanding_Architectures_for_Efficient_Video_Recognition_CVPR_2020_paper.html). It is not in the default suite because this comparison intentionally uses the pinned torchvision model/weight API without adding PyTorchVideo dependencies.
 
-The existing A row is read from the SHA-sealed frozen feature index and checked against the exact manifest/cache protocol. The three alternatives are a practical first panel, not proof that all visual architectures have been exhausted. They all start from supervised Kinetics-400
-weights, while the current VideoMAE-V2 uses a different pretraining recipe and
-has already been fine-tuned on FSN. Report these differences transparently.
+The existing A row is read from the SHA-sealed frozen feature index and checked
+against the exact manifest/cache protocol. MViT, Swin3D and R(2+1)D use
+supervised Kinetics-400 weights. V-JEPA 2 and InternVideo-Next are run as
+**frozen-encoder linear probes only** in this benchmark: we train a fresh
+seven-class linear head over mean-pooled video tokens, rather than claiming to
+reproduce the upstream pretraining or full fine-tuning recipes.
+
+V-JEPA 2 loads the official [facebookresearch/vjepa2](https://github.com/facebookresearch/vjepa2)
+ViT-L frozen-evaluation encoder and a local checkpoint containing
+target_encoder weights. It needs the upstream repository and its dependencies
+(e.g. the versions required by its environment, commonly including xformers).
+InternVideo-Next Base is loaded using Transformers remote code from
+[revliter/internvideo_next_base_p14_res224_f16](https://huggingface.co/revliter/internvideo_next_base_p14_res224_f16)
+at a pinned revision. Although the model appears in the
+[OpenGVLab InternVideo-Next collection](https://github.com/OpenGVLab/InternVideo/tree/main/InternVideo-Next),
+the actual checkpoint repository owner is revliter; inspect/review this remote
+code before enabling trust_remote_code=True in a production environment.
+
+The current VideoMAE-V2 reference uses a different pretraining recipe and has
+already been fine-tuned on FSN. A frozen foundation linear probe and a fully
+fine-tuned VideoMAE checkpoint are not a pure architecture-only comparison.
+Use the new probes to screen representation quality first; only invest in
+larger training runs after checking the result and the model's own license,
+provenance and compute requirements.
 
 ### Temporal heads on identical frozen evidence
 
@@ -93,22 +116,25 @@ supports:
 - **finetune**: train the whole backbone and head. Use this mode for the more
   meaningful fine-tuned backbone comparison to the existing fine-tuned A model.
 
-The visual model wrapper uses the corresponding torchvision Kinetics weight
-normalization and resize/center-crop geometry after the existing square cache.
-MViT and Swin receive 224-square crops; R(2+1)D receives the standard 112-square
-crop after its 128x171 resize. All alternatives use the same 16 temporal sample
-indices. Because the original videos were center-cropped to 224 when cached,
-these transforms cannot recover the uncropped original frame, and that limitation
-is recorded in each model audit.
+The Kinetics-supervised wrappers use each torchvision weight's normalization
+and resize/center-crop geometry after the existing square cache. MViT and Swin
+receive 224-square crops; R(2+1)D receives a 112-square crop after its 128x171
+resize. Both foundation probes use their model-specific normalization and
+224/256-square input settings. Every model samples the same 16 temporal positions
+from the 36-frame cache. Because the original videos were already center-cropped
+to 224 when cached, no wrapper can recover the uncropped original frame; each run
+records preprocessing and checkpoint provenance in its audit.
 
-**Interpret the linear-probe run only as a low-cost screening test.** The
-existing `videomae_v2_A_reference` row is an already FSN-finetuned checkpoint,
-whereas linear-probe alternatives keep their Kinetics-400 backbone frozen.
-Therefore, do not attribute score differences in the linear-probe run solely
-to architecture. For the main paper backbone comparison, use `--mode finetune`
-for the alternative models and report their training recipe and the existing A
-checkpoint's provenance explicitly; the existing A row is a sealed reference,
-not a same-optimizer retraining of VideoMAE-V2.
+**Interpret the linear-probe run only as a screening test.** The current
+VideoMAE reference is already fine-tuned on FSN; the Kinetics alternatives freeze
+their pretrained encoders during linear probing, and the two foundation models
+also freeze their encoders. These scores answer whether the pretrained
+representations are useful with a simple classifier; they are not a fair
+architecture-only ranking against the fully fine-tuned VideoMAE reference.
+For a stronger backbone comparison, full fine-tuning is available for the three
+torchvision Kinetics alternatives. The foundation-model adapters deliberately
+reject `--mode finetune` until their upstream training/evaluation recipes can
+be implemented and validated.
 
 The temporal benchmark uses one fixed set of VideoMAE per-tubelet global/local
 features and A logits. It does not re-extract visual features and does not read
@@ -186,8 +212,41 @@ python -m experiments.comparison.run_vision_backbone_benchmark \
   --workers 4
 ~~~
 
-For the paper-grade backbone comparison, run full fine-tuning on the same
-protocol; this takes materially more GPU time. Use a separate fresh output path:
+### Add the two foundation encoders (linear-probe screen)
+
+V-JEPA 2 uses its upstream checkpoint and repository explicitly; download both
+before running and use a fresh output directory. The InternVideo-Next checkpoint
+is downloaded by Transformers from the pinned model repository if it is not in
+the local cache. This run contains only frozen-encoder probes plus the sealed
+VideoMAE A reference; it does not run either model's official fine-tuning recipe.
+
+~~~bash
+mkdir -p /absolute/path/to/new_private_output
+python -m experiments.comparison.run_vision_backbone_benchmark \
+  --manifest-dir /absolute/path/to/frozen/manifests \
+  --cache-dir /absolute/path/to/cache36 \
+  --existing-a-index /absolute/path/to/videomae/features/index.jsonl \
+  --reference-source-protocol-dir /absolute/path/to/sealed/source_protocol \
+  --output /absolute/path/to/new_private_output/foundation_linear_probe_seed42 \
+  --device cuda:0 \
+  --models vjepa2_vitl,internvideo_next_base \
+  --mode linear_probe --seed 42 --epochs 5 --patience 2 \
+  --batch-size 2 --eval-batch-size 2 --accumulation-steps 4 \
+  --vjepa2-repo /absolute/path/to/vjepa2 \
+  --vjepa2-checkpoint /absolute/path/to/vitl.pt \
+  --workers 4
+~~~
+
+If V-JEPA 2 is not ready, run InternVideo-Next separately by setting
+`--models internvideo_next_base` and omitting the two V-JEPA-specific flags.
+Before using InternVideo-Next, review the pinned remote code. Do not use
+`--random-init` for either foundation model.
+
+For the paper-grade comparison among the three torchvision alternatives, run
+full fine-tuning on the same protocol. Do not include vjepa2_vitl or
+internvideo_next_base in this command; the current adapters intentionally
+support linear probing only. This takes materially more GPU time. Use a separate
+fresh output path:
 
 ~~~bash
 mkdir -p /absolute/path/to/new_private_output
