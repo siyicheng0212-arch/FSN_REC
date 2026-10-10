@@ -74,7 +74,7 @@ VideoMAE evidence experiments:
 python -m unittest tests.test_dual_timescale -v
 ~~~
 
-## Run the four cells serially
+## Run the six cells serially
 
 Replace the example paths with the existing sealed paths on your server. Keep
 output outside the repository and choose a path that does not already exist.
@@ -93,7 +93,7 @@ python -m experiments.dual_timescale.run \
   --grad-clip-norm 5
 ~~~
 
-Run M0–M3 on one GPU serially; do not launch duplicate jobs. The output files
+Run all six cells on one GPU serially; do not launch duplicate jobs. The output files
 are public_safe_summary.json (aggregate metrics), private_protocol.json,
 status.json, and per-variant folders with best.pt, history.json,
 public_safe_summary.json and private_val_predictions.jsonl. Keep all private
