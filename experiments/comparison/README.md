@@ -107,9 +107,11 @@ are weak metadata labels, not verified edit-boundary truth.
 
 Metrics include overall seven-class Macro-F1 and accuracy, per-class results,
 paired corrections/harm relative to A, sweep/reperfusion confusion, source and
-duration slices, model size, elapsed time, and resource measurements where
-available. Slice Macro-F1 must be interpreted with its support because some
-slices may not contain every class.
+duration slices (<5s, 5–15s, ≥15s), model size, validation clips/second, elapsed
+time and peak CUDA memory where available. Both benchmark runners preserve the
+support count for each duration slice and report present-class Macro-F1 alongside
+the fixed seven-class Macro-F1. Slice metrics must be interpreted with their
+support because some slices may not contain every class.
 
 ## 1. Run unit tests first
 
