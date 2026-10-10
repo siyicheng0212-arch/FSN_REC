@@ -229,3 +229,19 @@ summary. Never commit the checkpoints or private per-clip output.
 A better score is not guaranteed. These experiments are designed to show
 whether gains come from visual representation, temporal head, or their
 interaction, even if the result is that a simpler baseline is best.
+
+
+## New foundation-model candidates: integration status
+
+The next visual-backbone extension is planned as a separate adapter path rather than forcing these models through the torchvision Kinetics wrapper:
+
+| Candidate | Official checkpoint / repository | Initial protocol |
+|---|---|---|
+| V-JEPA 2 ViT-L/16 | `facebook/vjepa2-vitl-fpc64-256`; [official repo](https://github.com/facebookresearch/vjepa2) | Frozen encoder + 7-class linear head |
+| InternVideo-Next Base (91M) | `revliter/internvideo_next_base_p14_res224_f16`; [official repo](https://github.com/OpenGVLab/InternVideo/tree/main/InternVideo-Next) | Frozen encoder + 7-class linear head |
+
+These candidates add self-supervised video representations to the current panel, which otherwise relies on Kinetics-400 supervised weights for its three alternatives. InternVideo-Next's official collection lists a Base (91M) and Large (about 0.3B) model; Base is the sensible first engineering target. V-JEPA 2 provides ViT-L/ViT-H/ViT-G variants; start with ViT-L to control cost.
+
+**Implementation status:** model choice and protocol are documented in [FOUNDATION_BACKBONE_INTEGRATION.md](FOUNDATION_BACKBONE_INTEGRATION.md). Model-specific adapters, smoke tests, and training are not yet complete. Do not add either model to the completed-results table until the official checkpoint loads, the documented preprocessing and feature interface are verified, frozen-backbone gradients are tested, and the run passes the same manifest/cache audit.
+
+A frozen-feature linear probe is only a screening experiment. The current VideoMAE row is an already fine-tuned sealed reference, so its score must not be ranked directly against new frozen probes as if the training protocols matched. For paper-grade comparison, use a separate, consistently defined fine-tuning table and report pretraining differences explicitly.
