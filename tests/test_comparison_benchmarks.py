@@ -137,7 +137,7 @@ class TemporalComparisonTest(unittest.TestCase):
 
     def test_all_learned_temporal_heads_have_finite_training_gradients(self):
         labels = torch.tensor([[0, 1, 2], [3, 4, -100]])
-        for name in ("mlp", "bigru", "tcn", "mstcnpp_adapted", "local_transformer"):
+        for name in ("mlp", "bigru", "tcn", "tcn_local", "mstcnpp_adapted", "local_transformer"):
             with self.subTest(name=name):
                 model = self.make_model(name)
                 optimizer = torch.optim.AdamW(model.parameters(), lr=0.01)
