@@ -285,6 +285,8 @@ def _run_one(name, datasets, args, device, output):
     history, best_state = [], None
     best_f1, best_epoch, stale = -1.0, 0, 0
     total_start = time.perf_counter()
+    peak_train_allocated = 0
+    peak_train_reserved = 0
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats(device)
 
@@ -292,7 +294,13 @@ def _run_one(name, datasets, args, device, output):
         train_result = _train_epoch(
             model, train_loader, optimizer, train_weights, device, args, flip_generator
         )
+        if device.type == "cuda":
+            torch.cuda.synchronize(device)
+            peak_train_allocated = max(peak_train_allocated, torch.cuda.max_memory_allocated(device))
+            peak_train_reserved = max(peak_train_reserved, torch.cuda.max_memory_reserved(device))
         val_result = evaluate(model, val_loader, device)
+        peak_train_allocated = max(peak_train_allocated, int(val_result["peak_cuda_allocated_bytes"]))
+        peak_train_reserved = max(peak_train_reserved, int(val_result["peak_cuda_reserved_bytes"]))
         score = float(val_result["metrics"]["all"]["macro_f1"])
         if score > best_f1:
             best_f1, best_epoch, stale = score, epoch, 0
@@ -345,8 +353,9 @@ def _run_one(name, datasets, args, device, output):
     torch.save(checkpoint, output / "best.pt")
     _write_jsonl(output / "private_val_predictions.jsonl", final["predictions"])
     if device.type == "cuda":
-        peak_allocated = torch.cuda.max_memory_allocated(device)
-        peak_reserved = torch.cuda.max_memory_reserved(device)
+        torch.cuda.synchronize(device)
+        peak_allocated = max(peak_train_allocated, int(final["peak_cuda_allocated_bytes"]))
+        peak_reserved = max(peak_train_reserved, int(final["peak_cuda_reserved_bytes"]))
     else:
         peak_allocated = peak_reserved = 0
     return {
