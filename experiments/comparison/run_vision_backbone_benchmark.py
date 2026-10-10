@@ -158,29 +158,41 @@ def evaluate(model, loader, device):
 
 
 def _make_optimizer(model, mode: str, args):
-    classifier = model.classifier_layer()
-    classifier_ids = {id(parameter) for parameter in classifier.parameters()}
+    classifier_ids = {id(parameter) for parameter in model.classifier_layer().parameters()}
     for parameter in model.parameters():
         parameter.requires_grad_(mode == "finetune")
-    for parameter in classifier.parameters():
+    for parameter in model.classifier_layer().parameters():
         parameter.requires_grad_(True)
-    if mode == "linear_probe":
-        groups = [{"params": list(classifier.parameters()), "lr": args.head_lr, "name": "classifier"}]
-    else:
-        backbone_params = [
-            parameter for parameter in model.parameters()
-            if parameter.requires_grad and id(parameter) not in classifier_ids
-        ]
-        groups = [
-            {"params": backbone_params, "lr": args.backbone_lr, "name": "backbone"},
-            {"params": list(classifier.parameters()), "lr": args.head_lr, "name": "classifier"},
-        ]
-    optimizer = torch.optim.AdamW(groups, weight_decay=args.weight_decay)
-    return optimizer, [
-        {"name": group["name"], "lr": group["lr"],
-         "parameters": sum(parameter.numel() for parameter in group["params"])}
+
+    grouped = {}
+    for name, parameter in model.named_parameters():
+        if not parameter.requires_grad:
+            continue
+        is_head = id(parameter) in classifier_ids
+        no_decay = parameter.ndim == 1 or name.endswith(".bias")
+        key = ("head" if is_head else "backbone", "nodecay" if no_decay else "decay")
+        if key not in grouped:
+            grouped[key] = {
+                "params": [],
+                "lr": args.head_lr if is_head else args.backbone_lr,
+                "weight_decay": 0.0 if no_decay else args.weight_decay,
+                "name": f"{key[0]}_{key[1]}",
+            }
+        grouped[key]["params"].append(parameter)
+    if not grouped:
+        raise ValueError("no trainable parameters selected for visual benchmark")
+    groups = [grouped[key] for key in sorted(grouped)]
+    optimizer = torch.optim.AdamW(groups, weight_decay=0.0)
+    summary = [
+        {
+            "name": group["name"],
+            "lr": group["lr"],
+            "weight_decay": group["weight_decay"],
+            "parameters": sum(parameter.numel() for parameter in group["params"]),
+        }
         for group in groups
     ]
+    return optimizer, summary
 
 
 def _set_training_mode(model, mode):
