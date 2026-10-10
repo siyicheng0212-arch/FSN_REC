@@ -1,4 +1,4 @@
-# Dual-timescale FSN action recognition (M0–M3)
+# Dual-timescale FSN action recognition (six-cell ablation)
 
 **Status: code prepared, not trained.** This branch adds an executable, sealed
 frozen-feature experiment for the two research questions:
