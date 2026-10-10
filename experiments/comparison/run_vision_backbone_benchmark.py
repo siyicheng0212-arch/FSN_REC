@@ -150,9 +150,16 @@ def _load_existing_a_reference(index_path: Path, source_protocol_dir: Path, data
     sealed_metrics = prior_summary.get("variants", {}).get("A_only", {})
     if not isinstance(sealed_metrics, dict):
         raise ValueError("source-protocol evaluation has no A-only validation metrics")
-    for key in ("accuracy", "macro_f1", "confusion"):
-        if metrics["all"].get(key) != sealed_metrics.get(key):
-            raise ValueError(f"current A val823 replay differs from sealed source-protocol metrics: {key}")
+    key_pairs = {
+        "accuracy": "accuracy",
+        "macro_f1": "macro_f1",
+        "confusion": "confusion_matrix",
+    }
+    for sealed_key, local_key in key_pairs.items():
+        if metrics["all"].get(local_key) != sealed_metrics.get(sealed_key):
+            raise ValueError(
+                f"current A val823 replay differs from sealed source-protocol metrics: {sealed_key}"
+            )
     return {
         "index_path": str(index_path),
         "index_sha256": sha256_file(index_path),
