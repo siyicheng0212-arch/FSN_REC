@@ -33,7 +33,12 @@ from experiments.dual_timescale.run import (
     _write_jsonl,
     collate_segments,
 )
-from experiments.comparison.temporal_models import (\n    MarkovViterbiDecoder, TemporalComparisonModel, VALID_MODELS, estimate_transition_log_probs,\n)
+from experiments.comparison.temporal_models import (
+    MarkovViterbiDecoder,
+    TemporalComparisonModel,
+    VALID_MODELS,
+    estimate_transition_log_probs,
+)
 
 
 VARIANTS = ("a_only", "markov_viterbi", *VALID_MODELS)
