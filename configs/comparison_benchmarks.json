@@ -40,7 +40,9 @@
     "common": {
       "temporal_indices": "same 16 uniformly sampled positions from existing 36-frame 224-square cache",
       "selection_metric": "full seven-class val823 Macro-F1; earliest epoch on ties",
-      "test_read": false
+      "test_read": false,
+      "existing_a_index_required": true,
+      "existing_a_reference": "same sealed VideoMAE A index, identical clip IDs and manifest SHA, includes logits for exact val823 reference"
     }
   },
   "temporal_heads": {
