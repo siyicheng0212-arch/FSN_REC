@@ -67,7 +67,8 @@ def _load_existing_a_reference(index_path: Path, source_protocol_dir: Path, data
         for split in ("train", "val")
     }
     if (
-        seal.get("status") != "complete"
+        seal.get("schema") != "fsn-videomae2-source-relation-evidence-v1"
+        or seal.get("status") != "complete"
         or seal.get("A_frozen") is not True
         or seal.get("index_sha256") != sha256_file(index_path)
         or seal.get("checkpoint_sha256") != index.checkpoint_sha256
@@ -131,6 +132,12 @@ def _load_existing_a_reference(index_path: Path, source_protocol_dir: Path, data
         torch.as_tensor(targets, dtype=torch.long),
         metadata,
     )
+    sealed_metrics = seal.get("A_val_metrics")
+    if not isinstance(sealed_metrics, dict):
+        raise ValueError("existing A export seal has no validation metric record")
+    for key in ("accuracy", "macro_f1", "confusion"):
+        if metrics["all"].get(key) != sealed_metrics.get(key):
+            raise ValueError(f"current A val823 replay differs from export seal: {key}")
     return {
         "index_path": str(index_path),
         "index_sha256": sha256_file(index_path),
