@@ -59,8 +59,13 @@
       "inter_clip": false,
       "description": "frozen VideoMAE A"
     },
+    "M1S": {
+      "within_clip": "single_scale_mean_control",
+      "inter_clip": false,
+      "description": "trainable clip head with shared mean repeated into seven fusion bins"
+    },
     "M1": {
-      "within_clip": true,
+      "within_clip": "multiscale_1_2_4",
       "inter_clip": false,
       "description": "within-clip multi-scale only"
     },
@@ -69,10 +74,15 @@
       "inter_clip": true,
       "description": "inter-clip TCN only"
     },
-    "M3": {
-      "within_clip": true,
+    "M2S": {
+      "within_clip": "single_scale_mean_control",
       "inter_clip": true,
-      "description": "joint within-clip multi-scale and inter-clip TCN"
+      "description": "single-scale clip head plus inter-clip TCN"
+    },
+    "M3": {
+      "within_clip": "multiscale_1_2_4",
+      "inter_clip": true,
+      "description": "multi-scale clip head plus inter-clip TCN"
     }
   },
   "training": {
@@ -89,5 +99,17 @@
   },
   "outputs_contain_private_clip_ids": true,
   "independent_test_available": false,
-  "training_started": false
+  "training_started": false,
+  "parameter_matched_controls": [
+    [
+      "M1S",
+      "M1",
+      "same learnable head; mean-only pooling versus 1/2/4-scale pooling"
+    ],
+    [
+      "M2S",
+      "M3",
+      "same learnable head and context architecture; mean-only pooling versus 1/2/4-scale pooling"
+    ]
+  ]
 }
