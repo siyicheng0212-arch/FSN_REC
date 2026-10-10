@@ -15,9 +15,6 @@ from torch.nn import functional as F
 
 
 NUM_CLASSES = 7
-DEFAULT_DILATIONS = (1, 2, 4)
-
-
 def _validate_dilations(blocks: int, dilations: tuple[int, ...] | None) -> tuple[int, ...]:
     schedule = tuple(2 ** level for level in range(blocks)) if dilations is None else tuple(dilations)
     if len(schedule) != blocks or any(type(item) is not int or item < 1 for item in schedule):
