@@ -181,7 +181,7 @@ def _train_model(model_name, index, train_segments, val_segments, args, device, 
                 "local_dim": index.local_dim,
                 "hidden_dim": args.hidden_dim,
                 "dropout": args.dropout,
-                "tcn_dilations": list(args.tcn_dilations),
+                "tcn_dilations": list(getattr(model, "temporal_dilations", tuple(args.tcn_dilations))),
                 "transformer_layers": args.transformer_layers,
                 "transformer_heads": args.transformer_heads,
                 "local_radius": args.local_radius,
@@ -364,7 +364,8 @@ def run(args):
                 "markov_viterbi": "first-order Viterbi decoder with transition probabilities estimated from train-only eligible chains",
                 "mlp": "per-clip residual MLP with no neighbor access",
                 "bigru": "two-layer bidirectional GRU over candidate-clip sequence",
-                "tcn": "current residual dilated TCN baseline",
+                "tcn": "current residual dilated TCN baseline with dilation [1,2,4] (receptive field 15 clips)",
+                "tcn_local": "matched three-block TCN control with dilation [1,1,1] (receptive field 7 clips)",
                 "mstcnpp_adapted": "three-stage TCN-inspired per-clip prediction refinement; clip-label adaptation, not official dense MS-TCN++",
                 "local_transformer": "two-layer Transformer encoder with local temporal attention mask; ASFormer-inspired clip-label adaptation",
             },
@@ -395,7 +396,7 @@ def parse_args(argv=None):
     parser.add_argument("--source-protocol-dir", required=True, help="exact source protocol directory")
     parser.add_argument("--output", required=True, help="fresh private output directory")
     parser.add_argument("--device", default="cuda")
-    parser.add_argument("--models", default="a_only,markov_viterbi,mlp,bigru,tcn,mstcnpp_adapted,local_transformer")
+    parser.add_argument("--models", default="a_only,markov_viterbi,mlp,bigru,tcn,tcn_local,mstcnpp_adapted,local_transformer")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--patience", type=int, default=5)
