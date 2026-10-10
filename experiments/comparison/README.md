@@ -154,7 +154,6 @@ python -m experiments.comparison.run_vision_backbone_benchmark \
   --cache-dir /absolute/path/to/cache36 \
   --existing-a-index /absolute/path/to/videomae/features/index.jsonl \
   --reference-source-protocol-dir /absolute/path/to/sealed/source_protocol \
-  --reference-source-protocol-dir /absolute/path/to/sealed/source_protocol \
   --output /absolute/path/to/new_private_output/vision_linear_probe_seed42 \
   --device cuda:0 \
   --models mvit_v2_s,swin3d_t,r2plus1d_18 \
