@@ -49,8 +49,9 @@
       }
     ],
     "training_modes": {
-      "linear_probe": "freeze Kinetics-400 pretrained backbone; train seven-class head only; screening",
-      "finetune": "fine-tune all backbone and seven-class head; use for paper comparison"
+      "linear_probe": "freeze pretrained encoder; train seven-class head only; screening",
+      "finetune": "fine-tune all backbone and seven-class head; supported only for the three torchvision Kinetics alternatives",
+      "foundation_models": "V-JEPA 2 ViT-L and InternVideo-Next Base adapters currently support frozen linear probes only; upstream full fine-tuning is not implemented"
     },
     "common": {
       "temporal_indices": "same 16 uniformly sampled positions from existing 36-frame 224-square cache",
