@@ -125,21 +125,27 @@ class TemporalComparisonTest(unittest.TestCase):
         )
         self.assertEqual(output.argmax(dim=-1).tolist(), [[0, 1]])
 
-    def test_clip_head_training_step_produces_finite_gradients(self):
-        model = self.make_model("local_transformer")
-        optimizer = torch.optim.AdamW(model.parameters(), lr=0.01)
+    def test_all_learned_temporal_heads_have_finite_training_gradients(self):
         labels = torch.tensor([[0, 1, 2], [3, 4, -100]])
-        output = model(
-            self.global_tokens, self.local_tokens, self.a_logits, self.valid
-        )
-        loss = F.cross_entropy(output[self.valid], labels[self.valid])
-        self.assertTrue(bool(torch.isfinite(loss)))
-        loss.backward()
-        self.assertTrue(all(
-            parameter.grad is None or bool(torch.isfinite(parameter.grad).all())
-            for parameter in model.parameters()
-        ))
-        optimizer.step()
+        for name in ("mlp", "bigru", "tcn", "mstcnpp_adapted", "local_transformer"):
+            with self.subTest(name=name):
+                model = self.make_model(name)
+                optimizer = torch.optim.AdamW(model.parameters(), lr=0.01)
+                stage_outputs = model.forward_all(
+                    self.global_tokens, self.local_tokens, self.a_logits, self.valid
+                )
+                losses = [
+                    F.cross_entropy(output[self.valid], labels[self.valid])
+                    for output in stage_outputs
+                ]
+                loss = torch.stack(losses).mean()
+                self.assertTrue(bool(torch.isfinite(loss)))
+                loss.backward()
+                self.assertTrue(all(
+                    parameter.grad is None or bool(torch.isfinite(parameter.grad).all())
+                    for parameter in model.parameters()
+                ))
+                optimizer.step()
 
 
 
