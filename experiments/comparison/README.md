@@ -41,7 +41,7 @@ chains:
 
 | Model | What it tests | Status |
 |---|---|---|
-| A_only | No learned temporal head | Mandatory reference |
+| a_only | No learned temporal head | Mandatory reference |
 | mlp | Trainable per-clip correction without neighbors | Capacity/no-context control |
 | bigru | Bidirectional recurrent context | Strong surgical-activity-style sequential baseline |
 | tcn | Current residual dilated TCN | Existing temporal baseline |
@@ -110,7 +110,7 @@ this test or run several GPU suites simultaneously.
 
 ## 2. Temporal-head comparison (low cost)
 
-Use the same sealed feature index and source-protocol directory as the current
+Create the output parent first (for example, with mkdir -p /absolute/path/to/new_private_output). Use the same sealed feature index and source-protocol directory as the current
 VideoMAE/TCN experiments. Replace the sample paths with their existing absolute
 paths. Keep output outside the repository and all input directories.
 
@@ -120,7 +120,7 @@ python -m experiments.comparison.run_temporal_benchmark \
   --source-protocol-dir /absolute/path/to/sealed/source_protocol \
   --output /absolute/path/to/new_private_output/temporal_heads_seed42 \
   --device cuda:0 \
-  --models A_only,mlp,bigru,tcn,mstcnpp_adapted,local_transformer \
+  --models a_only,mlp,bigru,tcn,mstcnpp_adapted,local_transformer \
   --seed 42 --epochs 30 --patience 5 \
   --batch-size-segments 16 --hidden-dim 64 --dropout 0.1 \
   --tcn-dilations 1,2,4 \
@@ -140,9 +140,10 @@ cache metadata before creating an output directory. It may need internet access
 to fetch the named torchvision Kinetics-400 weights if they are not already in
 the local PyTorch weight cache.
 
-Quick frozen-feature/linear-probe screen:
+Quick frozen-feature/linear-probe screen (first create the output parent):
 
 ~~~bash
+mkdir -p /absolute/path/to/new_private_output
 python -m experiments.comparison.run_vision_backbone_benchmark \
   --manifest-dir /absolute/path/to/frozen/manifests \
   --cache-dir /absolute/path/to/cache36 \
@@ -155,9 +156,10 @@ python -m experiments.comparison.run_vision_backbone_benchmark \
 ~~~
 
 For the paper-grade backbone comparison, run full fine-tuning on the same
-protocol; this takes materially more GPU time:
+protocol; this takes materially more GPU time. Use a separate fresh output path:
 
 ~~~bash
+mkdir -p /absolute/path/to/new_private_output
 python -m experiments.comparison.run_vision_backbone_benchmark \
   --manifest-dir /absolute/path/to/frozen/manifests \
   --cache-dir /absolute/path/to/cache36 \
