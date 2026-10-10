@@ -28,8 +28,9 @@ train/validation/test manifests. Raw video, TXT files, patient metadata,
 generated clips, frames, checkpoints, and experiment logs are intentionally
 excluded from this repository.
 
-The code also detects ELAN rows expressed as integer milliseconds and
-normalizes them to seconds.
+Bare numeric ELAN timestamps are not interpreted from their magnitude. For numeric-only timestamps, verify the unit from the original export and pass the matching `--tsv-numeric-time-unit`, `--wide-numeric-time-unit`, or `--blocks-numeric-time-unit` option (`seconds` or `milliseconds`). HH:MM:SS timestamps are converted directly to seconds. Original timestamp text and its conversion policy are retained in each event.
+
+The default split now groups by source-video identity (exact video SHA-256 when available, otherwise a matched filename or a low-confidence annotation video key). This prevents known clips from one video crossing splits, but does not guarantee that different videos from the same patient or practitioner are separated; do not describe it as patient/practitioner-independent.
 
 ## Tests
 
