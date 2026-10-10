@@ -15,7 +15,9 @@
       "existing_val_macro_f1_seed42": 0.89695956623777,
       "existing_val_accuracy_seed42": 0.9100850546780073,
       "note": "included as an exact reference row in visual-backbone benchmark; metrics must replay against prior sealed report",
-      "included_in_runner": true
+      "included_in_runner": true,
+      "source_protocol_dir_required": true,
+      "validation": "the export protocol source_audit_sha256 must match the supplied source-protocol audit.json"
     },
     "alternatives": [
       {
