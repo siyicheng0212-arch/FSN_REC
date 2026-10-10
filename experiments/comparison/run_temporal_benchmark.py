@@ -45,6 +45,31 @@ from experiments.comparison.temporal_models import (
 VARIANTS = ("a_only", "markov_viterbi", *VALID_MODELS)
 
 
+def _evaluate_timed(model, loader, device):
+    """Evaluate once while measuring validation throughput and peak GPU memory."""
+    if device.type == "cuda":
+        with torch.cuda.device(device):
+            torch.cuda.synchronize(device)
+            torch.cuda.reset_peak_memory_stats(device)
+    started = time.perf_counter()
+    summary, private_rows = _evaluate(model, loader, device)
+    if device.type == "cuda":
+        with torch.cuda.device(device):
+            torch.cuda.synchronize(device)
+            peak_allocated = int(torch.cuda.max_memory_allocated(device))
+            peak_reserved = int(torch.cuda.max_memory_reserved(device))
+    else:
+        peak_allocated = peak_reserved = 0
+    elapsed = time.perf_counter() - started
+    count = int(summary.get("count", 823))
+    return summary, private_rows, {
+        "validation_inference_seconds": elapsed,
+        "validation_clips_per_second": count / max(elapsed, 1e-9),
+        "peak_cuda_allocated_bytes": peak_allocated,
+        "peak_cuda_reserved_bytes": peak_reserved,
+    }
+
+
 def _safe_output(path: Path, protected: tuple[Path, ...]) -> Path:
     path = path.expanduser().resolve()
     if path.exists() or not path.parent.is_dir():
@@ -114,7 +139,7 @@ def _train_model(model_name, index, train_segments, val_segments, args, device, 
             optimizer.step()
             losses.append(float(loss.detach().cpu()))
 
-        val_summary, _ = _evaluate(model, val_loader, device)
+        val_summary, _, val_resources = _evaluate_timed(model, val_loader, device)
         score = float(val_summary["macro_f1"])
         if score > best_score:
             best_score, best_epoch, stale = score, epoch, 0
@@ -126,6 +151,8 @@ def _train_model(model_name, index, train_segments, val_segments, args, device, 
             "mean_train_loss": float(np.mean(losses)) if losses else 0.0,
             "val_macro_f1": score,
             "val_accuracy": float(val_summary["accuracy"]),
+            "val_seconds": val_resources["validation_inference_seconds"],
+            "val_clips_per_second": val_resources["validation_clips_per_second"],
             "best_macro_f1": best_score,
         }
         history.append(row)
@@ -141,7 +168,7 @@ def _train_model(model_name, index, train_segments, val_segments, args, device, 
     if best_state is None:
         raise RuntimeError(f"{model_name}: no best checkpoint was selected")
     model.load_state_dict(best_state, strict=True)
-    final_summary, private_rows = _evaluate(model, val_loader, device)
+    final_summary, private_rows, final_resources = _evaluate_timed(model, val_loader, device)
     torch.save(
         {
             "schema": "fsn-temporal-head-benchmark-v1",
@@ -173,6 +200,10 @@ def _train_model(model_name, index, train_segments, val_segments, args, device, 
         "best_macro_f1": best_score,
         "parameter_count": model.parameter_count,
         "elapsed_seconds": time.perf_counter() - start,
+        "validation_inference_seconds": final_resources["validation_inference_seconds"],
+        "validation_clips_per_second": final_resources["validation_clips_per_second"],
+        "peak_cuda_allocated_bytes": final_resources["peak_cuda_allocated_bytes"],
+        "peak_cuda_reserved_bytes": final_resources["peak_cuda_reserved_bytes"],
         "metrics": final_summary,
     }
     _write_json(model_dir / "public_safe_summary.json", result)
@@ -267,11 +298,12 @@ def run(args):
             model_dir = output / model_name
             model_dir.mkdir()
             if model_name == "a_only":
-                metrics, private_rows = _evaluate(None, val_loader, torch.device("cpu"))
+                metrics, private_rows, resources = _evaluate_timed(None, val_loader, torch.device("cpu"))
                 result = {
                     "model_name": model_name,
                     "training_completed": False,
                     "parameter_count": 0,
+                    **resources,
                     "metrics": metrics,
                 }
                 _write_jsonl(model_dir / "private_val_predictions.jsonl", private_rows)
@@ -280,7 +312,7 @@ def run(args):
                 decoder = MarkovViterbiDecoder(
                     transition_log_probs, transition_strength=args.markov_strength
                 ).to(device).eval()
-                metrics, private_rows = _evaluate(decoder, val_loader, device)
+                metrics, private_rows, resources = _evaluate_timed(decoder, val_loader, device)
                 result = {
                     "model_name": model_name,
                     "training_completed": False,
@@ -288,6 +320,7 @@ def run(args):
                     "transition_smoothing": args.markov_smoothing,
                     "transition_strength": args.markov_strength,
                     "transition_estimation": "train labels only on eligible chains",
+                    **resources,
                     "metrics": metrics,
                 }
                 _write_jsonl(model_dir / "private_val_predictions.jsonl", private_rows)
@@ -311,6 +344,9 @@ def run(args):
                     None if baseline_f1 is None else row["metrics"]["macro_f1"] - baseline_f1
                 ),
                 "parameters": row.get("parameter_count", 0),
+                "validation_inference_seconds": row.get("validation_inference_seconds"),
+                "validation_clips_per_second": row.get("validation_clips_per_second"),
+                "peak_cuda_allocated_bytes": row.get("peak_cuda_allocated_bytes"),
             }
             for name, row in results.items()
         }
