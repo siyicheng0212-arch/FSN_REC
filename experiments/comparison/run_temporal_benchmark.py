@@ -33,10 +33,10 @@ from experiments.dual_timescale.run import (
     _write_jsonl,
     collate_segments,
 )
-from experiments.comparison.temporal_models import TemporalComparisonModel, VALID_MODELS
+from experiments.comparison.temporal_models import (\n    MarkovViterbiDecoder, TemporalComparisonModel, VALID_MODELS, estimate_transition_log_probs,\n)
 
 
-VARIANTS = ("a_only", *VALID_MODELS)
+VARIANTS = ("a_only", "markov_viterbi", *VALID_MODELS)
 
 
 def _safe_output(path: Path, protected: tuple[Path, ...]) -> Path:
@@ -187,6 +187,8 @@ def run(args):
         raise ValueError("grad_clip_norm must be positive and finite")
     if not math.isfinite(args.dropout) or not 0 <= args.dropout < 1:
         raise ValueError("dropout must be in [0,1)")
+    if not math.isfinite(args.markov_strength) or args.markov_strength < 0:
+        raise ValueError("markov_strength must be nonnegative and finite")
     if len(args.tcn_dilations) < 1 or any(value < 1 for value in args.tcn_dilations):
         raise ValueError("--tcn-dilations needs positive comma-separated integers")
     if args.hidden_dim % args.transformer_heads != 0:
@@ -206,6 +208,10 @@ def run(args):
     train_segments = _materialize_raw_segments(index, metadata, split_segments["train"])
     val_segments = _materialize_raw_segments(index, metadata, split_segments["val"])
     del split_segments
+    transition_log_probs = (
+        estimate_transition_log_probs(train_segments, smoothing=args.markov_smoothing)
+        if "markov_viterbi" in model_names else None
+    )
 
     output.mkdir(parents=False)
     protocol = {
@@ -234,6 +240,9 @@ def run(args):
             "transformer_layers": args.transformer_layers,
             "transformer_heads": args.transformer_heads,
             "local_attention_radius_clips": args.local_radius,
+            "markov_smoothing": args.markov_smoothing,
+            "markov_transition_strength": args.markov_strength,
+            "markov_fit_data": "train-only labels on source-protocol-eligible chains",
         },
     }
     _write_json(output / "private_protocol.json", protocol)
@@ -257,6 +266,22 @@ def run(args):
                     "model_name": model_name,
                     "training_completed": False,
                     "parameter_count": 0,
+                    "metrics": metrics,
+                }
+                _write_jsonl(model_dir / "private_val_predictions.jsonl", private_rows)
+                _write_json(model_dir / "public_safe_summary.json", result)
+            elif model_name == "markov_viterbi":
+                decoder = MarkovViterbiDecoder(
+                    transition_log_probs, transition_strength=args.markov_strength
+                ).to(device).eval()
+                metrics, private_rows = _evaluate(decoder, val_loader, device)
+                result = {
+                    "model_name": model_name,
+                    "training_completed": False,
+                    "parameter_count": 0,
+                    "transition_smoothing": args.markov_smoothing,
+                    "transition_strength": args.markov_strength,
+                    "transition_estimation": "train labels only on eligible chains",
                     "metrics": metrics,
                 }
                 _write_jsonl(model_dir / "private_val_predictions.jsonl", private_rows)
@@ -294,6 +319,7 @@ def run(args):
             "source_policy_is_weak_adjacency_metadata_not_verified_continuity": True,
             "model_definitions": {
                 "a_only": "original frozen VideoMAE logits",
+                "markov_viterbi": "first-order Viterbi decoder with transition probabilities estimated from train-only eligible chains",
                 "mlp": "per-clip residual MLP with no neighbor access",
                 "bigru": "two-layer bidirectional GRU over candidate-clip sequence",
                 "tcn": "current residual dilated TCN baseline",
@@ -327,7 +353,7 @@ def parse_args(argv=None):
     parser.add_argument("--source-protocol-dir", required=True, help="exact source protocol directory")
     parser.add_argument("--output", required=True, help="fresh private output directory")
     parser.add_argument("--device", default="cuda")
-    parser.add_argument("--models", default="a_only,mlp,bigru,tcn,mstcnpp_adapted,local_transformer")
+    parser.add_argument("--models", default="a_only,markov_viterbi,mlp,bigru,tcn,mstcnpp_adapted,local_transformer")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--patience", type=int, default=5)
@@ -343,6 +369,8 @@ def parse_args(argv=None):
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--weight-decay", type=float, default=1e-2)
     parser.add_argument("--grad-clip-norm", type=float, default=5.0)
+    parser.add_argument("--markov-smoothing", type=float, default=1.0)
+    parser.add_argument("--markov-strength", type=float, default=0.25)
     return parser.parse_args(argv)
 
 
