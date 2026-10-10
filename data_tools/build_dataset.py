@@ -11,6 +11,7 @@ import argparse
 import csv
 import hashlib
 import json
+import math
 import re
 import shutil
 import struct
@@ -21,8 +22,8 @@ from pathlib import Path
 from typing import Any, BinaryIO, Iterable
 
 
-SCHEMA_VERSION = "fsn-normalized-2.0"
-SPLIT_POLICY_VERSION = "grouped-source-stratified-8-1-1-v2.1"
+SCHEMA_VERSION = "fsn-normalized-2.1"
+SPLIT_POLICY_VERSION = "grouped-source-stratified-8-1-1-video-unit-v3"
 CANONICAL_LABELS = ["消毒", "进针", "运针", "扫散", "再灌注", "拔针", "固定"]
 LABEL_TO_ID = {label: idx for idx, label in enumerate(CANONICAL_LABELS)}
 LABEL_MAP = {
@@ -76,15 +77,49 @@ def upload_copy_suffix_rank(media_key: str) -> int:
     return 1 if re.search(r"-\d+$", normalized_key(media_key)) else 0
 
 
-def parse_time(value: str) -> float:
+def parse_time(value: str, numeric_unit: str | None = None) -> float:
+    """Convert an ELAN time token to seconds without guessing numeric units."""
     value = value.strip()
-    if ":" not in value:
-        return float(value)
-    fields = value.split(":")
-    if len(fields) != 3:
-        raise ValueError(f"unsupported time token: {value}")
-    return int(fields[0]) * 3600 + int(fields[1]) * 60 + float(fields[2])
+    if not value:
+        raise ValueError("empty timestamp")
+    if ":" in value:
+        fields = value.split(":")
+        if len(fields) != 3:
+            raise ValueError(f"unsupported time token: {value!r}")
+        hours, minutes, seconds = int(fields[0]), int(fields[1]), float(fields[2])
+        if hours < 0 or not 0 <= minutes < 60 or not 0 <= seconds < 60:
+            raise ValueError(f"invalid HH:MM:SS time token: {value!r}")
+        result = hours * 3600 + minutes * 60 + seconds
+    else:
+        try:
+            numeric_value = float(value)
+        except ValueError as exc:
+            raise ValueError(f"invalid numeric timestamp: {value!r}") from exc
+        if not math.isfinite(numeric_value):
+            raise ValueError(f"timestamp must be finite: {value!r}")
+        if numeric_unit not in {"seconds", "milliseconds"}:
+            raise ValueError(
+                f"ambiguous numeric timestamp {value!r}; specify the time unit "
+                "for this export format (seconds or milliseconds)"
+            )
+        result = numeric_value / 1000.0 if numeric_unit == "milliseconds" else numeric_value
+    if not math.isfinite(result):
+        raise ValueError(f"timestamp must be finite: {value!r}")
+    return result
 
+
+def _attach_time_provenance(
+    event: dict[str, Any], raw_start: str, raw_end: str,
+    numeric_time_unit: str | None,
+) -> dict[str, Any]:
+    """Preserve source timestamp strings and how each endpoint became seconds."""
+    def interpretation(raw: str) -> str:
+        return "clock_hms" if ":" in raw else f"numeric_{numeric_time_unit or 'unspecified'}"
+    event["raw_start_time"] = raw_start.strip()
+    event["raw_end_time"] = raw_end.strip()
+    event["start_time_interpretation"] = interpretation(raw_start)
+    event["end_time_interpretation"] = interpretation(raw_end)
+    return event
 
 def clean_label(raw_label: str | None) -> tuple[str | None, list[str]]:
     if raw_label is None:
@@ -156,7 +191,9 @@ def base_event(index: int, start: float, end: float, raw_label: str | None, line
     }
 
 
-def parse_tsv_rows(text: str) -> list[dict[str, Any]]:
+def parse_tsv_rows(
+    text: str, numeric_time_unit: str | None = None
+) -> list[dict[str, Any]]:
     events: list[dict[str, Any]] = []
     for line_number, line in enumerate(text.splitlines(), 1):
         if not line.strip():
@@ -167,22 +204,25 @@ def parse_tsv_rows(text: str) -> list[dict[str, Any]]:
             event["exclusion_reasons"].append("malformed_tsv_row")
             events.append(event)
             continue
+        # Determine column layout first: do not swallow ambiguous-unit failures
+        # as a fallback to a different set of columns.
         try:
-            start = float(columns[3].strip())
-            end = float(columns[5].strip())
+            float(columns[3].strip())
+            float(columns[5].strip())
+            raw_start, raw_end = columns[3].strip(), columns[5].strip()
         except ValueError:
-            start = parse_time(columns[2])
-            end = parse_time(columns[4])
-        events.append(base_event(len(events), start, end, columns[-1], line_number))
+            raw_start, raw_end = columns[2].strip(), columns[4].strip()
+        start = parse_time(raw_start, numeric_time_unit)
+        end = parse_time(raw_end, numeric_time_unit)
+        event = base_event(len(events), start, end, columns[-1], line_number)
+        _attach_time_provenance(event, raw_start, raw_end, numeric_time_unit)
+        events.append(event)
     return events
 
-
-def parse_wide(text: str) -> list[dict[str, Any]]:
-    """Parse ELAN wide text by column position, preserving blank labels.
-
-    Each label begins at the same character offset as its matching time range.
-    Whitespace splitting is unsafe because some files contain blank annotations.
-    """
+def parse_wide(
+    text: str, numeric_time_unit: str | None = None
+) -> list[dict[str, Any]]:
+    """Parse ELAN wide text while preserving blank labels and explicit units."""
     lines = text.splitlines()
     events: list[dict[str, Any]] = []
     for idx, line in enumerate(lines):
@@ -194,37 +234,24 @@ def parse_wide(text: str) -> list[dict[str, Any]]:
         if tc_idx >= len(lines):
             continue
         label_positions: dict[int, str] = {}
-        # Multiple spaces delimit cells; a single space may be part of an entered label.
         for match in re.finditer(r"\S+(?:[ \u3000]\S+)*", line):
             if match.group() != "default":
                 label_positions[match.start()] = match.group().strip()
-        range_matches = list(RANGE_RE.finditer(lines[tc_idx]))
-        integer_millisecond_row = bool(range_matches) and all(
-            ":" not in match.group(1)
-            and ":" not in match.group(2)
-            and "." not in match.group(1)
-            and "." not in match.group(2)
-            for match in range_matches
-        ) and max(float(match.group(2)) for match in range_matches) >= 1000
-        for match in range_matches:
+        for match in RANGE_RE.finditer(lines[tc_idx]):
+            raw_start, raw_end = match.group(1), match.group(2)
+            start = parse_time(raw_start, numeric_time_unit)
+            end = parse_time(raw_end, numeric_time_unit)
             raw_label = label_positions.get(match.start())
-            start = parse_time(match.group(1))
-            end = parse_time(match.group(2))
-            if integer_millisecond_row:
-                start /= 1000
-                end /= 1000
-            event = base_event(
-                len(events), start, end, raw_label, tc_idx + 1
-            )
-            if integer_millisecond_row:
-                event["qc_flags"].append("integer_millisecond_timebase_normalized_to_seconds")
+            event = base_event(len(events), start, end, raw_label, tc_idx + 1)
+            _attach_time_provenance(event, raw_start, raw_end, numeric_time_unit)
             if raw_label is None:
                 event["qc_flags"].append("blank_label_cell_preserved_by_column_alignment")
             events.append(event)
     return events
 
-
-def parse_blocks(text: str) -> list[dict[str, Any]]:
+def parse_blocks(
+    text: str, numeric_time_unit: str | None = None
+) -> list[dict[str, Any]]:
     lines = text.splitlines()
     events: list[dict[str, Any]] = []
     for idx, line in enumerate(lines):
@@ -235,20 +262,27 @@ def parse_blocks(text: str) -> list[dict[str, Any]]:
         while label_idx >= 0 and not lines[label_idx].strip():
             label_idx -= 1
         raw_label = lines[label_idx].strip() if label_idx >= 0 else None
-        events.append(
-            base_event(len(events), parse_time(match.group(1)), parse_time(match.group(2)), raw_label, idx + 1)
-        )
+        raw_start, raw_end = match.group(1), match.group(2)
+        start = parse_time(raw_start, numeric_time_unit)
+        end = parse_time(raw_end, numeric_time_unit)
+        event = base_event(len(events), start, end, raw_label, idx + 1)
+        _attach_time_provenance(event, raw_start, raw_end, numeric_time_unit)
+        events.append(event)
     return events
 
 
-def parse_events(text: str, input_format: str) -> list[dict[str, Any]]:
+def parse_events(
+    text: str, input_format: str, numeric_time_unit: str | None = None
+) -> list[dict[str, Any]]:
     if input_format == "tsv_rows":
-        return parse_tsv_rows(text)
+        return parse_tsv_rows(text, numeric_time_unit)
     if input_format == "elan_wide":
-        return parse_wide(text)
+        return parse_wide(text, numeric_time_unit)
     if input_format == "label_time_blocks":
-        return parse_blocks(text)
+        return parse_blocks(text, numeric_time_unit)
     return []
+
+
 
 
 def iter_atoms(handle: BinaryIO, start: int, end: int) -> Iterable[tuple[bytes, int, int]]:
@@ -403,20 +437,32 @@ def parse_video_metadata(path: Path, compute_sha256: bool = True) -> dict[str, A
     return result
 
 
-def infer_group(source: str, media_key: str) -> dict[str, str]:
-    acu = re.search(r"(?i)ACU\s*0*(\d+)", media_key)
-    if acu:
+def infer_group(
+    source: str,
+    media_key: str,
+    video_path: Path | None = None,
+    video_sha256: str | None = None,
+) -> dict[str, str]:
+    """Assign groups at the video level, not inferred patient level."""
+    if video_sha256:
         return {
-            "group_id": f"{source}:subject:ACU{int(acu.group(1)):03d}",
-            "basis": "filename_patient_code",
+            "group_id": f"video:sha256:{video_sha256}",
+            "basis": "exact_video_sha256",
             "confidence": "high",
         }
+    if video_path is not None:
+        video_key = normalized_key(Path(video_path).stem)
+        return {
+            "group_id": f"{source}:video:{stable_hash(video_key, 20)}",
+            "basis": "matched_video_filename",
+            "confidence": "medium",
+        }
+    unresolved_key = normalized_key(media_key)
     return {
-        "group_id": f"{source}:record:{stable_hash(normalized_key(media_key), 20)}",
-        "basis": "recording_id_only_no_subject_id",
+        "group_id": f"{source}:video_key:{stable_hash(unresolved_key, 20)}",
+        "basis": "unmatched_annotation_video_key",
         "confidence": "low",
     }
-
 
 def infer_filename_metadata(media_key: str) -> dict[str, str | None]:
     date = re.search(r"(20\d{2})[-_]?([01]\d)[-_]?([0-3]\d)", media_key)
@@ -550,6 +596,18 @@ def main() -> None:
         "--skip-video-sha256", action="store_true",
         help="read container metadata without hashing every full video (faster for development)",
     )
+    parser.add_argument(
+        "--tsv-numeric-time-unit", choices=("seconds", "milliseconds"), default=None,
+        help="unit of bare numeric timestamps in TSV exports; required if timestamps are numeric",
+    )
+    parser.add_argument(
+        "--wide-numeric-time-unit", choices=("seconds", "milliseconds"), default=None,
+        help="unit of bare numeric timestamps in ELAN wide exports; required if timestamps are numeric",
+    )
+    parser.add_argument(
+        "--blocks-numeric-time-unit", choices=("seconds", "milliseconds"), default=None,
+        help="unit of bare numeric timestamps in label/time-block exports if any endpoint is numeric",
+    )
     parser.add_argument("--force", action="store_true", help="replace an existing generated output directory")
     args = parser.parse_args()
     if args.val_ratio <= 0 or args.test_ratio <= 0 or args.val_ratio + args.test_ratio >= 1:
@@ -606,7 +664,18 @@ def main() -> None:
         source_rel = relpath(txt_path, workspace)
         record_id = f"{source}-{stable_hash(source_rel, 16)}"
         input_format = detect_format(text)
-        events = parse_events(text, input_format)
+        unit_by_format = {
+            "tsv_rows": args.tsv_numeric_time_unit,
+            "elan_wide": args.wide_numeric_time_unit,
+            "label_time_blocks": args.blocks_numeric_time_unit,
+        }
+        try:
+            events = parse_events(text, input_format, unit_by_format.get(input_format))
+        except ValueError as exc:
+            raise SystemExit(
+                f"Timestamp parsing failed for {txt_path} (format={input_format}): {exc}. "
+                "Set the matching --*-numeric-time-unit option from the original ELAN export specification."
+            ) from exc
         metadata = extract_header_metadata(text)
         content_hash = sha256_bytes(raw)
         duplicate_of = (
@@ -673,7 +742,12 @@ def main() -> None:
             "available_video_path": relpath(video_path, workspace) if video_path else None,
             "video_metadata": video_metadata,
             "duplicate_of_record_id": duplicate_of,
-            "grouping": infer_group(source, media_key),
+            "grouping": infer_group(
+                source,
+                media_key,
+                video_path=video_path,
+                video_sha256=(video_metadata or {}).get("sha256"),
+            ),
             "filename_metadata": infer_filename_metadata(media_key),
             "identity_metadata": {
                 "patient_id": None,
@@ -1005,7 +1079,7 @@ def main() -> None:
     }
     json_dump(output / "meta_data" / "dataset_summary.json", summary)
 
-    dictionary = f"""# FSN 规范化数据说明\n\n## 统一结构\n\n- `meta_data/records.jsonl`：每个原始 TXT 一条记录，保存路径、SHA-256、EAF URI、标注时间、解析格式、视频属性、分组、split 和 QC。\n- `meta_data/events_all.jsonl`：每个原始时间段一条记录；包括空标签、歧义标签和被排除事件。\n- `meta_data/identity_map_template.csv`：患者、术者、治疗 session 和机构映射模板。\n- `annotations/*.json`：按原始记录组织的统一 JSON。\n- `manifests/train.jsonl`、`val.jsonl`、`test.jsonl`：8:1:1 可监督 clip 清单。\n- `manifests/source_holdout/*/`：逐来源留一的域外测试清单。\n- `manifests/clips_all.csv`：与 clip JSONL 等价的 UTF-8-BOM 表格。\n\n## 清洗原则\n\n1. 三种原始格式统一为秒级 `start_sec/end_sec/duration_sec`。\n2. 原始标签永远保存在 `raw_label`；`normalized_label` 依据 `label_policy.json` 生成。\n3. 空标签、歧义/非规范标签、非正时长、短于 0.1 秒的事件不进入监督 clip，但仍保留。\n4. 完全相同的 TXT 只保留一个用于建模，副本标记 `duplicate_of_record_id`。\n5. 源 TXT 不修改；当前样例视频还额外保存文件哈希、帧数、帧率、编码、时长和分辨率。\n\n## 默认划分原则\n\n- 请求比例：train={1-args.val_ratio-args.test_ratio:.2%}、val={args.val_ratio:.2%}、test={args.test_ratio:.2%}；seed=`{args.seed}`。\n- 先按来源分层，再按 `group_id` 整组分配；clip 继承记录 split。\n- 能识别 `ACU###` 时按患者码分组；其余在身份表未填写前只能按原始记录分组，明确标为低可信度。\n- 目前的 8:1:1 是可运行的 provisional split，不能冒充完整的 patient/practitioner-independent split。\n- 填写 `identity_map_template.csv` 后应重建严格的患者、术者或联合身份隔离协议。\n- 来源留一 folds 用于测量 domain shift，但不能替代真正新增机构/新增患者的外部验证集。\n\n## 当前快照\n\n- 原始 TXT：{len(records)}\n- 当前可用视频：{summary['input']['available_video_files']}\n- train/val/test/excluded 记录：{summary['records_by_split']}\n- 可监督 clips：{len(clips)}\n- 泄漏检查：`groups_in_multiple_splits`、`exact_txt_hashes_in_multiple_splits`、`exact_video_hashes_in_multiple_splits` 均应为空。\n"""
+    dictionary = f"""# FSN 规范化数据说明\n\n## 统一结构\n\n- `meta_data/records.jsonl`：每个原始 TXT 一条记录，保存路径、SHA-256、EAF URI、标注时间、解析格式、视频属性、分组、split 和 QC。\n- `meta_data/events_all.jsonl`：每个原始时间段一条记录；包括空标签、歧义标签和被排除事件。\n- `meta_data/identity_map_template.csv`：患者、术者、治疗 session 和机构映射模板。\n- `annotations/*.json`：按原始记录组织的统一 JSON。\n- `manifests/train.jsonl`、`val.jsonl`、`test.jsonl`：8:1:1 可监督 clip 清单。\n- `manifests/source_holdout/*/`：逐来源留一的域外测试清单。\n- `manifests/clips_all.csv`：与 clip JSONL 等价的 UTF-8-BOM 表格。\n\n## 清洗原则\n\n1. 三种原始格式统一为秒级 `start_sec/end_sec/duration_sec`。\n2. 原始标签永远保存在 `raw_label`；`normalized_label` 依据 `label_policy.json` 生成。\n3. 空标签、歧义/非规范标签、非正时长、短于 0.1 秒的事件不进入监督 clip，但仍保留。\n4. 完全相同的 TXT 只保留一个用于建模，副本标记 `duplicate_of_record_id`。\n5. 源 TXT 不修改；当前样例视频还额外保存文件哈希、帧数、帧率、编码、时长和分辨率。\n\n## 默认划分原则\n\n- 请求比例：train={1-args.val_ratio-args.test_ratio:.2%}、val={args.val_ratio:.2%}、test={args.test_ratio:.2%}；seed=`{args.seed}`。\n- 先按来源分层，再按 `group_id` 整组分配；clip 继承记录 split。\n- 默认按源视频单位整组划分：可用时优先用精确视频 SHA-256；否则使用已匹配视频的文件名；视频未匹配时使用标注文件中的视频键并标为低可信度。\n- 该策略保证同一可识别视频的片段不跨 split，但不保证不同视频中的患者/操作者独立；不要声称 patient/practitioner-independent。\n- 纯数字时间戳不再按数值大小猜单位。按原始 ELAN 导出格式核实后，分别传入 `--tsv-numeric-time-unit`、`--wide-numeric-time-unit` 或 `--blocks-numeric-time-unit`；HH:MM:SS 格式会直接转为秒。\n- 填写 `identity_map_template.csv` 后应重建严格的患者、术者或联合身份隔离协议。\n- 来源留一 folds 用于测量 domain shift，但不能替代真正新增机构/新增患者的外部验证集。\n\n## 当前快照\n\n- 原始 TXT：{len(records)}\n- 当前可用视频：{summary['input']['available_video_files']}\n- train/val/test/excluded 记录：{summary['records_by_split']}\n- 可监督 clips：{len(clips)}\n- 泄漏检查：`groups_in_multiple_splits`、`exact_txt_hashes_in_multiple_splits`、`exact_video_hashes_in_multiple_splits` 均应为空。\n"""
     dictionary = dictionary.replace(
         "空标签、歧义/非规范标签、非正时长、短于 0.1 秒的事件不进入监督 clip，但仍保留。",
         "空标签、歧义/非规范标签和非正时长事件不进入监督集；正时长短动作保留，低于 0.1 秒者加 QC 并采用确定性重复帧采样。",
