@@ -283,6 +283,32 @@ def evaluate(model, loader, device):
     scores = torch.cat(logits_rows)
     targets = torch.cat(label_rows)
     metrics = compute_classification_metrics(scores, targets, meta_rows)
+    durations = np.asarray([float(row["duration"]) for row in meta_rows], dtype=np.float64)
+    duration_masks = {
+        "duration_lt_5s": durations < 5.0,
+        "duration_5_to_lt_15s": (durations >= 5.0) & (durations < 15.0),
+        "duration_ge_15s": durations >= 15.0,
+    }
+    metrics["duration_bins"] = {}
+    for name, mask in duration_masks.items():
+        if not bool(mask.any()):
+            metrics["duration_bins"][name] = {
+                "support": 0,
+                "metrics": None,
+                "present_class_macro_f1": None,
+            }
+            continue
+        sliced = compute_classification_metrics(
+            scores[torch.as_tensor(mask)],
+            targets[torch.as_tensor(mask)],
+            [row for row, keep in zip(meta_rows, mask.tolist()) if keep],
+        )
+        active = [row["f1"] for row in sliced["all"]["per_class"] if row["support"] > 0]
+        metrics["duration_bins"][name] = {
+            "support": int(mask.sum()),
+            "metrics": sliced["all"],
+            "present_class_macro_f1": float(np.mean(active)) if active else 0.0,
+        }
     return {
         "metrics": metrics,
         "predictions": private_rows,
