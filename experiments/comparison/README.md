@@ -45,7 +45,8 @@ chains:
 | markov_viterbi | Train-only, Laplace-smoothed first-order label transition prior with Viterbi decoding | Simple class-order prior baseline; tests whether a neural head adds value beyond a basic transition model |
 | mlp | Trainable per-clip correction without neighbors | Capacity/no-context control |
 | bigru | Bidirectional recurrent context | Strong surgical-activity-style sequential baseline |
-| tcn | Residual TCN with dilations [1,2,4] (receptive field 15 clips) | Existing temporal baseline |\n| tcn_local | Same three-block TCN with dilations [1,1,1] (receptive field 7 clips) | Parameter-matched local-context control |
+| tcn | Residual TCN with dilations [1,2,4] (receptive field 15 clips) | Existing temporal baseline |
+| tcn_local | Same three-block TCN with dilations [1,1,1] (receptive field 7 clips) | Parameter-matched local-context control |
 | mstcnpp_adapted | Three-stage TCN-inspired clip-prediction refinement | Multi-stage temporal refinement baseline |
 | local_transformer | Transformer with a local temporal attention mask | ASFormer-inspired local-connectivity baseline |
 
