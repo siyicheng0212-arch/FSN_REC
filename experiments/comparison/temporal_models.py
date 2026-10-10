@@ -13,6 +13,7 @@ import math
 import torch
 from torch import nn
 from torch.nn import functional as F
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
 from experiments.relation.tcn_baseline import FrozenEvidenceTCN, TCNConfig
 
@@ -209,7 +210,14 @@ class TemporalComparisonModel(nn.Module):
 
         if self.model_name == "bigru":
             hidden = self.input_projection(x) * mask
-            hidden, _ = self.sequence_model(hidden)
+            lengths = valid.sum(dim=1).to(device="cpu", dtype=torch.long)
+            packed = pack_padded_sequence(
+                hidden, lengths, batch_first=True, enforce_sorted=False
+            )
+            packed_output, _ = self.sequence_model(packed)
+            hidden, _ = pad_packed_sequence(
+                packed_output, batch_first=True, total_length=x.shape[1]
+            )
             correction = self.classifier(hidden) * mask
             return [a_logits + correction]
 
