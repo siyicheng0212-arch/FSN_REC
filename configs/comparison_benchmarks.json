@@ -54,6 +54,13 @@
         "purpose": "frozen current visual model"
       },
       {
+        "name": "markov_viterbi",
+        "paper": "Classical first-order Markov/HMM sequence decoding",
+        "purpose": "non-neural transition-prior baseline fitted only on train labels from eligible chains",
+        "smoothing": 1,
+        "transition_strength": 0.25
+      },
+      {
         "name": "mlp",
         "purpose": "per-clip residual MLP without neighbor access"
       },
@@ -84,7 +91,16 @@
       1217
     ],
     "selection_metric": "full seven-class val823 Macro-F1; earliest epoch on ties",
-    "source_rule_is_ground_truth_continuity": false
+    "source_rule_is_ground_truth_continuity": false,
+    "method_order": [
+      "a_only",
+      "markov_viterbi",
+      "mlp",
+      "bigru",
+      "tcn",
+      "mstcnpp_adapted",
+      "local_transformer"
+    ]
   },
   "literature": [
     {
