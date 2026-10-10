@@ -25,6 +25,7 @@ from torch.utils.data import DataLoader, Dataset
 from experiments.metrics import compute_classification_metrics
 from experiments.modern_baselines import videomae2 as video_data
 from experiments.comparison.vision_models import VISION_BACKBONES, build_backbone
+from experiments.relation.data import load_feature_index, sha256_file
 
 
 class RawCacheClipDataset(Dataset):
@@ -49,6 +50,92 @@ class RawCacheClipDataset(Dataset):
             "duration": float(row["duration"]),
         }
 
+
+
+def _load_existing_a_reference(index_path: Path, datasets, data_audit):
+    """Validate and score the current frozen VideoMAE A on these exact val clips."""
+    index_path = index_path.expanduser().resolve()
+    index = load_feature_index(index_path)
+    seal_path = index_path.parent / "protocol.json"
+    if not seal_path.is_file():
+        raise ValueError("existing A feature directory must contain its sealed protocol.json")
+    seal = json.loads(seal_path.read_text(encoding="utf-8"))
+    if (
+        seal.get("schema") != video_data.SCHEMA
+        or seal.get("status") != "complete"
+        or seal.get("A_frozen") is not True
+        or seal.get("index_sha256") != sha256_file(index_path)
+        or seal.get("checkpoint_sha256") != index.checkpoint_sha256
+        or seal.get("data_protocol") != video_data.DATA_PROTOCOL
+        or seal.get("split_counts") != data_audit["counts"]
+        or seal.get("train_manifest_sha256") != data_audit["manifest_sha256"]["train"]
+        or seal.get("val_manifest_sha256") != data_audit["manifest_sha256"]["val"]
+        or seal.get("test_read") is not False
+    ):
+        raise ValueError("existing VideoMAE A export does not match the sealed visual benchmark protocol")
+
+    expected_ids = {
+        split: {record.clip_id for record in dataset.base.records}
+        for split, dataset in datasets.items()
+    }
+    indexed_ids = {
+        split: {clip_id for clip_id, row in index.clips.items() if row["split"] == split}
+        for split in ("train", "val")
+    }
+    if expected_ids != indexed_ids:
+        raise ValueError("existing A index and raw-video benchmark do not cover identical train/val clips")
+
+    for split, dataset in datasets.items():
+        for record in dataset.base.records:
+            row = index.clips[record.clip_id]
+            if row.get("label_id") != record.label_id or row.get("group_id") != record.group_id:
+                raise ValueError(f"{record.clip_id}: A feature metadata differs from the frozen manifest")
+            if row.get("source_collection") != record.source_collection:
+                raise ValueError(f"{record.clip_id}: A feature source metadata differs from the frozen manifest")
+            duration = row.get("duration")
+            if not isinstance(duration, (int, float)) or not math.isclose(
+                float(duration), record.clip_duration_sec, rel_tol=0.0, abs_tol=1e-6
+            ):
+                raise ValueError(f"{record.clip_id}: A feature duration differs from the frozen manifest")
+
+    val_records = datasets["val"].base.records
+    logits, targets, metadata, predictions = [], [], [], []
+    for record in val_records:
+        row = index.clips[record.clip_id]
+        score = index.read(record.clip_id)["logits"]
+        if score.shape != (7,) or not np.isfinite(score).all():
+            raise ValueError(f"{record.clip_id}: invalid frozen A logits")
+        prediction = int(np.asarray(score).argmax())
+        logits.append(score.astype(np.float32, copy=False))
+        targets.append(record.label_id)
+        metadata.append({"source_collection": record.source_collection,
+                         "duration": record.clip_duration_sec})
+        predictions.append({
+            "clip_id": record.clip_id,
+            "target": int(record.label_id),
+            "prediction": prediction,
+            "source": record.source_collection,
+            "duration": float(record.clip_duration_sec),
+            "logits": [float(value) for value in score],
+        })
+    if len(predictions) != 823:
+        raise ValueError("existing A reference must cover the complete val823")
+    metrics = compute_classification_metrics(
+        torch.as_tensor(np.stack(logits), dtype=torch.float32),
+        torch.as_tensor(targets, dtype=torch.long),
+        metadata,
+    )
+    return {
+        "index_path": str(index_path),
+        "index_sha256": sha256_file(index_path),
+        "checkpoint_sha256": index.checkpoint_sha256,
+        "metrics": metrics,
+        "predictions": predictions,
+        "parameter_count": None,
+        "validation_inference_seconds": None,
+        "validation_clips_per_second": None,
+        "peak_cuda_allocated_bytes": None,
+    }
 
 def _seed(seed: int):
     random.seed(seed)
@@ -413,8 +500,10 @@ def run(args):
     # This preflight verifies the immutable manifests, every cache entry, split
     # and class coverage before any output directory or model is created.
     datasets, data_audit = video_data.audit_frozen_data(manifest_dir, cache_dir)
+    a_reference = _load_existing_a_reference(Path(args.existing_a_index), datasets, data_audit)
     repo = Path(__file__).resolve().parents[2]
-    output = _safe_output(Path(args.output), (repo, manifest_dir, cache_dir))
+    a_index_root = Path(args.existing_a_index).expanduser().resolve().parent
+    output = _safe_output(Path(args.output), (repo, manifest_dir, cache_dir, a_index_root))
     raw_datasets = {split: RawCacheClipDataset(dataset) for split, dataset in datasets.items()}
     output.mkdir(parents=False)
 
@@ -427,8 +516,13 @@ def run(args):
         "cache_mapping_sha256": data_audit["cache_mapping_sha256"],
         "validation_role": "val823_reused_development_validation_not_independent_test",
         "test_read": False,
-        "model_order": list(names),
-        "initialization": "Kinetics-400 supervised torchvision weights unless --random-init",
+        "model_order": ["videomae_v2_A_reference", *names],
+        "initialization": "existing sealed fine-tuned VideoMAE A reference plus Kinetics-400 supervised torchvision weights unless --random-init",
+        "existing_A_reference": {
+            "index_sha256": a_reference["index_sha256"],
+            "checkpoint_sha256": a_reference["checkpoint_sha256"],
+            "A_frozen": True,
+        },
         "mode": args.mode,
         "training": {
             "seed": args.seed,
@@ -449,8 +543,34 @@ def run(args):
         "data_audit": data_audit,
     }
     _write_json(output / "private_protocol.json", protocol)
-    _write_json(output / "status.json", {"status": "running", "completed_models": []})
-    results = {}
+    _write_json(output / "status.json", {"status": "running", "completed_models": ["videomae_v2_A_reference"]})
+    a_dir = output / "videomae_v2_A_reference"
+    a_dir.mkdir()
+    _write_jsonl(a_dir / "private_val_predictions.jsonl", a_reference["predictions"])
+    a_row = {
+        "backbone": "videomae_v2_A_reference",
+        "mode": "existing_finetuned_frozen_reference",
+        "pretrained": True,
+        "best_epoch": None,
+        "epochs_completed": 0,
+        "best_val_macro_f1": float(a_reference["metrics"]["all"]["macro_f1"]),
+        "parameters_total": None,
+        "parameters_trainable": 0,
+        "optimizer_groups": [],
+        "training_seconds_total": 0.0,
+        "validation": a_reference["metrics"],
+        "validation_inference_seconds": None,
+        "validation_clips_per_second": None,
+        "peak_cuda_allocated_bytes": None,
+        "peak_cuda_reserved_bytes": None,
+        "model_audit": {
+            "source": "existing sealed VideoMAE A feature export",
+            "index_sha256": a_reference["index_sha256"],
+            "checkpoint_sha256": a_reference["checkpoint_sha256"],
+        },
+    }
+    _write_json(a_dir / "public_safe_summary.json", a_row)
+    results = {"videomae_v2_A_reference": a_row}
     try:
         for name in names:
             model_dir = output / name
@@ -477,7 +597,7 @@ def run(args):
                     "parameters_total": row["parameters_total"],
                     "parameters_trainable": row["parameters_trainable"],
                     "validation_clips_per_second": row["validation_clips_per_second"],
-                    "peak_cuda_allocated_bytes": row["peak_cuda_allocated_bytes"],
+                    "peak_cuda_allocated_bytes": row.get("peak_cuda_allocated_bytes"),
                 }
                 for name, row in results.items()
             },
@@ -505,6 +625,8 @@ def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest-dir", type=Path, required=True)
     parser.add_argument("--cache-dir", type=Path, required=True)
+    parser.add_argument("--existing-a-index", type=Path, required=True,
+                        help="sealed current VideoMAE A index.jsonl for same-protocol reference")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--models", default="mvit_v2_s,swin3d_t,r2plus1d_18")
