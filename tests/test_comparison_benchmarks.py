@@ -1,9 +1,11 @@
 import unittest
+from types import SimpleNamespace
 
+import numpy as np
 import torch
 from torch.nn import functional as F
 
-from experiments.comparison.temporal_models import TemporalComparisonModel
+from experiments.comparison.temporal_models import (\n    MarkovViterbiDecoder, TemporalComparisonModel, estimate_transition_log_probs,\n)
 from experiments.comparison.vision_models import VISION_BACKBONES, _replace_last_linear
 
 
@@ -66,6 +68,56 @@ class TemporalComparisonTest(unittest.TestCase):
         padded_valid = torch.tensor([[True, True, False, False, False]])
         padded = model(padded_global, padded_local, padded_logits, padded_valid)
         torch.testing.assert_close(alone, padded[:, :2], rtol=1e-6, atol=1e-6)
+
+
+    def test_transition_prior_uses_only_supplied_training_chains(self):
+        train_chain = SimpleNamespace(labels=np.asarray([0, 1, 2, 2, 2], dtype=np.int64))
+        log_probs = estimate_transition_log_probs([train_chain], smoothing=1.0)
+        self.assertEqual(tuple(log_probs.shape), (7, 7))
+        torch.testing.assert_close(
+            torch.logsumexp(log_probs, dim=1),
+            torch.zeros(7),
+            atol=1e-6,
+            rtol=1e-6,
+        )
+        self.assertGreater(float(log_probs[0, 1]), float(log_probs[0, 0]))
+        self.assertGreater(float(log_probs[2, 2]), float(log_probs[2, 1]))
+
+    def test_markov_decoder_reduces_to_independent_argmax_at_zero_strength(self):
+        log_probs = torch.full((7, 7), -torch.log(torch.tensor(7.0)).item())
+        decoder = MarkovViterbiDecoder(log_probs, transition_strength=0.0).eval()
+        logits = torch.randn(2, 3, 7)
+        valid = torch.tensor([[True, True, True], [True, True, False]])
+        output = decoder(
+            torch.empty(2, 3, 8, 6),
+            torch.empty(2, 3, 8, 4),
+            logits,
+            valid,
+        )
+        torch.testing.assert_close(
+            output.argmax(dim=-1)[valid],
+            logits.argmax(dim=-1)[valid],
+        )
+
+    def test_markov_decoder_can_use_train_transition_order(self):
+        transition = torch.full((7, 7), -10.0)
+        transition[0, 1] = 0.0
+        transition[1, 1] = 0.0
+        transition = torch.log_softmax(transition, dim=-1)
+        decoder = MarkovViterbiDecoder(transition, transition_strength=1.0).eval()
+        logits = torch.full((1, 2, 7), -10.0)
+        logits[0, 0, 0] = 2.0
+        logits[0, 0, 1] = 1.9
+        logits[0, 1, 0] = 2.0
+        logits[0, 1, 1] = 1.9
+        valid = torch.ones(1, 2, dtype=torch.bool)
+        output = decoder(
+            torch.empty(1, 2, 8, 6),
+            torch.empty(1, 2, 8, 4),
+            logits,
+            valid,
+        )
+        self.assertEqual(output.argmax(dim=-1).tolist(), [[0, 1]])
 
     def test_clip_head_training_step_produces_finite_gradients(self):
         model = self.make_model("local_transformer")
