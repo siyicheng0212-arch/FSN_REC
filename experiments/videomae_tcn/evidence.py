@@ -120,9 +120,15 @@ def prepare(index_path, source_dir):
     input_sha = {name: sha256_file(path) for name, path in paths.items()}
     config = TCNConfig(index.global_dim, index.local_dim, TRAINING["hidden_dim"],
                        TRAINING["blocks"], TRAINING["dropout"])
+    model_config = asdict(config)
+    # Older sealed VideoMAE runs omitted the dilation field because the default
+    # schedule was implicit. Keep their evidence payload byte-for-byte stable;
+    # an explicit local-TCN schedule is recorded by the training checkpoint.
+    if config.dilations is None:
+        model_config.pop("dilations", None)
     info = {"counts": counts, "manifest_sha256": source["manifest_sha256"],
             "A_checkpoint_sha256": index.checkpoint_sha256, "input_sha256": input_sha,
-            "model_config": asdict(config), "A_only": replay,
+            "model_config": model_config, "A_only": replay,
             "segments": {split: {"count": len(items),
                         "singleton_clips": sum(len(s.clip_ids) == 1 for s in items),
                         "maximum_length": max(len(s.clip_ids) for s in items)}

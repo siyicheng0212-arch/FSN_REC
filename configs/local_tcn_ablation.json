@@ -1,0 +1,41 @@
+{
+  "name": "fsn_local_tcn_receptive_field_ablation",
+  "status": "code_ready_not_trained",
+  "baseline": {
+    "dilations": [1, 2, 4],
+    "receptive_field_candidate_clips": 15
+  },
+  "scheme_b": {
+    "dilations": [1, 1, 1],
+    "receptive_field_candidate_clips": 7
+  },
+  "optional_medium_control": {
+    "dilations": [1, 1, 2],
+    "receptive_field_candidate_clips": 9
+  },
+  "fixed_architecture": {
+    "blocks": 3,
+    "hidden_dim": 64,
+    "kernel_size": 3,
+    "dropout": 0.1,
+    "residual": true,
+    "pointwise_mix_kernel": 1
+  },
+  "training": {
+    "seeds": [42, 10, 1217],
+    "max_epochs": 30,
+    "early_stopping_patience": 5,
+    "batch_size_segments": 16,
+    "optimizer": "AdamW",
+    "learning_rate": 0.001,
+    "weight_decay": 0.01,
+    "gradient_clip_norm": 5.0,
+    "loss": "unweighted valid-clip seven-class cross entropy",
+    "selection_metric": "development seven-class Macro-F1",
+    "test_read": false
+  },
+  "receptive_field_formula": "1 + 2 * sum(dilations)",
+  "parameters_changed_by_dilation_only": false,
+  "training_started": false,
+  "performance_claim_made": false
+}
