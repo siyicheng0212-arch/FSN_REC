@@ -37,7 +37,7 @@ class DualTimescaleTest(unittest.TestCase):
         self.assertTrue(torch.equal(embedding[1, 2], torch.zeros_like(embedding[1, 2])))
 
     def test_all_learned_variants_initially_preserve_A_logits(self):
-        for variant in ("M1", "M2", "M3"):
+        for variant in ("M1S", "M1", "M2", "M2S", "M3"):
             with self.subTest(variant=variant):
                 model = DualTimescaleModel(
                     variant=variant, global_dim=6, local_dim=4,
@@ -47,6 +47,33 @@ class DualTimescaleTest(unittest.TestCase):
                 output = model(self.global_tokens, self.local_tokens, self.a_logits, self.valid)
                 self.assertTrue(torch.equal(output, self.a_logits))
                 self.assertTrue(torch.equal(output[1, 2], self.a_logits[1, 2]))
+
+
+    def test_mean_control_and_multiscale_models_are_parameter_matched(self):
+        mean_only = DualTimescaleModel(
+            variant="M1S", global_dim=6, local_dim=4, embedding_dim=8,
+            hidden_dim=8, blocks=3, dropout=0, dilations=(1, 2, 4),
+        )
+        multiscale = DualTimescaleModel(
+            variant="M1", global_dim=6, local_dim=4, embedding_dim=8,
+            hidden_dim=8, blocks=3, dropout=0, dilations=(1, 2, 4),
+        )
+        self.assertEqual(
+            sum(p.numel() for p in mean_only.parameters()),
+            sum(p.numel() for p in multiscale.parameters()),
+        )
+        mean_context = DualTimescaleModel(
+            variant="M2S", global_dim=6, local_dim=4, embedding_dim=8,
+            hidden_dim=8, blocks=3, dropout=0, dilations=(1, 2, 4),
+        )
+        multi_context = DualTimescaleModel(
+            variant="M3", global_dim=6, local_dim=4, embedding_dim=8,
+            hidden_dim=8, blocks=3, dropout=0, dilations=(1, 2, 4),
+        )
+        self.assertEqual(
+            sum(p.numel() for p in mean_context.parameters()),
+            sum(p.numel() for p in multi_context.parameters()),
+        )
 
     def test_context_padding_does_not_change_real_positions(self):
         model = TemporalContextHead(feature_dim=5, hidden_dim=8, blocks=3, dropout=0).eval()
