@@ -38,13 +38,23 @@ class TemporalComparisonTest(unittest.TestCase):
         )
 
     def test_all_temporal_heads_initially_preserve_A_logits(self):
-        for name in ("mlp", "bigru", "tcn", "mstcnpp_adapted", "local_transformer"):
+        for name in ("mlp", "bigru", "tcn", "tcn_local", "mstcnpp_adapted", "local_transformer"):
             with self.subTest(name=name):
                 model = self.make_model(name).eval()
                 output = model(
                     self.global_tokens, self.local_tokens, self.a_logits, self.valid
                 )
                 torch.testing.assert_close(output, self.a_logits, rtol=0, atol=0)
+
+
+    def test_tcn_and_local_tcn_have_matched_size_but_different_receptive_field(self):
+        main_tcn = self.make_model("tcn")
+        local_tcn = self.make_model("tcn_local")
+        self.assertEqual(main_tcn.parameter_count, local_tcn.parameter_count)
+        self.assertEqual(main_tcn.temporal_dilations, (1, 2, 4))
+        self.assertEqual(local_tcn.temporal_dilations, (1, 1, 1))
+        self.assertEqual(main_tcn.tcn.config.receptive_field_clips, 15)
+        self.assertEqual(local_tcn.tcn.config.receptive_field_clips, 7)
 
     def test_staged_tcn_returns_three_supervised_predictions(self):
         model = self.make_model("mstcnpp_adapted")
