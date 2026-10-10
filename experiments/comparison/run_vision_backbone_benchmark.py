@@ -62,6 +62,8 @@ def _load_existing_a_reference(index_path: Path, source_protocol_dir: Path, data
     if not seal_path.is_file() or not audit_path.is_file():
         raise ValueError("existing A reference requires its export seal and source-protocol audit")
     seal = json.loads(seal_path.read_text(encoding="utf-8"))
+    if any(row.get("split") not in {"train", "val"} for row in index.clips.values()):
+        raise ValueError("existing A index must contain only the sealed train/val clips; test rows are rejected")
     actual_split_counts = {
         split: sum(row["split"] == split for row in index.clips.values())
         for split in ("train", "val")
