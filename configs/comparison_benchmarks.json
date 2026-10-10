@@ -11,10 +11,11 @@
   "visual_backbones": {
     "current_reference": {
       "name": "VideoMAE-V2 ViT-B/16",
-      "initialization": "existing frozen-A FSN-finetuned distilled K710 checkpoint",
+      "initialization": "exact sealed per-clip A logit export",
       "existing_val_macro_f1_seed42": 0.89695956623777,
       "existing_val_accuracy_seed42": 0.9100850546780073,
-      "note": "historical exploratory reference, not rerun by visual-backbone script"
+      "note": "included as an exact reference row in visual-backbone benchmark; metrics must replay against prior sealed report",
+      "included_in_runner": true
     },
     "alternatives": [
       {
@@ -58,7 +59,8 @@
         "paper": "Classical first-order Markov/HMM sequence decoding",
         "purpose": "non-neural transition-prior baseline fitted only on train labels from eligible chains",
         "smoothing": 1,
-        "transition_strength": 0.25
+        "transition_strength": 0.25,
+        "training": "train-only transition counts on source-protocol-eligible chains"
       },
       {
         "name": "mlp",
