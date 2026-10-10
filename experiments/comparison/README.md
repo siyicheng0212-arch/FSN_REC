@@ -126,7 +126,7 @@ python -m experiments.comparison.run_temporal_benchmark \
   --output /absolute/path/to/new_private_output/temporal_heads_seed42 \
   --device cuda:0 \
   --models a_only,markov_viterbi,mlp,bigru,tcn,mstcnpp_adapted,local_transformer \
-  --markov-smoothing 1.0 --markov-strength 0.25 \\
+  --markov-smoothing 1.0 --markov-strength 0.25 \
   --seed 42 --epochs 30 --patience 5 \
   --batch-size-segments 16 --hidden-dim 64 --dropout 0.1 \
   --tcn-dilations 1,2,4 \
