@@ -115,6 +115,7 @@ VideoMAE/TCN experiments. Replace the sample paths with their existing absolute
 paths. Keep output outside the repository and all input directories.
 
 ~~~bash
+mkdir -p /absolute/path/to/new_private_output
 python -m experiments.comparison.run_temporal_benchmark \
   --index /absolute/path/to/videomae/features/index.jsonl \
   --source-protocol-dir /absolute/path/to/sealed/source_protocol \
