@@ -209,6 +209,7 @@ def _build_vjepa2(repo_path: Path | None, checkpoint_path: Path | None):
             "tubelet_size": 2,
             "uniform_power": True,
             "use_rope": True,
+            "img_temporal_dim_size": None,
         }
     }
     wrapper_kwargs = {"max_frames": 128, "use_pos_embed": False}
@@ -270,17 +271,21 @@ def _build_internvideo_next(model_id: str, revision: str):
     if not revision.strip():
         raise ValueError("--internvideo-next-revision must pin a model repository revision")
     try:
-        from transformers import AutoModel, VideoMAEImageProcessor
+        from transformers import AutoConfig, AutoModel, VideoMAEImageProcessor
     except ImportError as error:
         raise RuntimeError(
             "internvideo_next_base requires transformers with VideoMAEImageProcessor support"
         ) from error
 
     try:
+        config = AutoConfig.from_pretrained(
+            model_id, revision=revision, trust_remote_code=True
+        )
         processor = VideoMAEImageProcessor.from_pretrained(model_id, revision=revision)
         encoder = AutoModel.from_pretrained(
             model_id,
             revision=revision,
+            config=config,
             trust_remote_code=True,
             torch_dtype=torch.float32,
         )
