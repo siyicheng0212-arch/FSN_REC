@@ -65,7 +65,18 @@ chains have median length 2 and maximum length 10 in the prior audit, so report
 chain-length support and don't overstate evidence about very long-range context.
 The Markov prior is estimated strictly from train-only labels on these eligible
 chains, with Laplace smoothing; it is a simple order-prior control, not verified
-clinical workflow truth.
+clinical workflow truth. The `tcn` and `tcn_local` rows keep depth, width,
+kernel and parameter count fixed while changing only the receptive field
+(15 versus 7 candidate clips), making this the matched comparison for the
+local-TCN experiment.
+
+A crucial limit: under the current source-rule protocol, network-video candidate
+adjacencies are generally cut, so network clips mostly become singleton
+sequences. These temporal-head comparisons therefore evaluate context on the
+eligible clinical chains and preserve independent visual classification for
+network clips; **they do not evaluate a learned relation model on potentially
+valid network-video adjacencies**. That separate question requires the proposed
+R module and verified or carefully constructed relation evaluation pairs.
 
 ## Data and fairness contract
 
