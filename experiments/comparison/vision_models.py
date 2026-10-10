@@ -1,4 +1,4 @@
-"""Kinetics-400-pretrained torchvision video backbones for FSN comparison."""
+"""Visual backbone wrappers for FSN comparison benchmarks."""
 from __future__ import annotations
 
 import torch
@@ -8,7 +8,10 @@ from torch.nn import functional as F
 from experiments.modern_baselines import videomae2 as video_data
 
 
-VISION_BACKBONES = ("mvit_v2_s", "swin3d_t", "r2plus1d_18", "vjepa2_vitl", "internvideo_next_base")
+VISION_BACKBONES = (
+    "mvit_v2_s", "swin3d_t", "r2plus1d_18",
+    "vjepa2_vitl", "internvideo_next_base",
+)
 FOUNDATION_BACKBONES = ("vjepa2_vitl", "internvideo_next_base")
 
 
