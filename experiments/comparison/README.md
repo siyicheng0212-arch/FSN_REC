@@ -45,7 +45,7 @@ chains:
 | markov_viterbi | Train-only, Laplace-smoothed first-order label transition prior with Viterbi decoding | Simple class-order prior baseline; tests whether a neural head adds value beyond a basic transition model |
 | mlp | Trainable per-clip correction without neighbors | Capacity/no-context control |
 | bigru | Bidirectional recurrent context | Strong surgical-activity-style sequential baseline |
-| tcn | Current residual dilated TCN | Existing temporal baseline |
+| tcn | Residual TCN with dilations [1,2,4] (receptive field 15 clips) | Existing temporal baseline |\n| tcn_local | Same three-block TCN with dilations [1,1,1] (receptive field 7 clips) | Parameter-matched local-context control |
 | mstcnpp_adapted | Three-stage TCN-inspired clip-prediction refinement | Multi-stage temporal refinement baseline |
 | local_transformer | Transformer with a local temporal attention mask | ASFormer-inspired local-connectivity baseline |
 
@@ -135,7 +135,7 @@ python -m experiments.comparison.run_temporal_benchmark \
   --source-protocol-dir /absolute/path/to/sealed/source_protocol \
   --output /absolute/path/to/new_private_output/temporal_heads_seed42 \
   --device cuda:0 \
-  --models a_only,markov_viterbi,mlp,bigru,tcn,mstcnpp_adapted,local_transformer \
+  --models a_only,markov_viterbi,mlp,bigru,tcn,tcn_local,mstcnpp_adapted,local_transformer \
   --markov-smoothing 1.0 --markov-strength 0.25 \
   --seed 42 --epochs 30 --patience 5 \
   --batch-size-segments 16 --hidden-dim 64 --dropout 0.1 \
