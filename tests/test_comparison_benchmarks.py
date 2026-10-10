@@ -5,7 +5,11 @@ import numpy as np
 import torch
 from torch.nn import functional as F
 
-from experiments.comparison.temporal_models import (\n    MarkovViterbiDecoder, TemporalComparisonModel, estimate_transition_log_probs,\n)
+from experiments.comparison.temporal_models import (
+    MarkovViterbiDecoder,
+    TemporalComparisonModel,
+    estimate_transition_log_probs,
+)
 from experiments.comparison.vision_models import VISION_BACKBONES, _replace_last_linear
 
 
