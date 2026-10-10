@@ -176,6 +176,30 @@ class VisionWrapperTest(unittest.TestCase):
             set(VISION_BACKBONES), {"mvit_v2_s", "swin3d_t", "r2plus1d_18"}
         )
 
+
+    def test_video_wrapper_samples_sixteen_frames_and_applies_model_crop(self):
+        class DummyVideoCore(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.head = torch.nn.Linear(3, 7)
+                self.seen_shape = None
+
+            def forward(self, video):
+                self.seen_shape = tuple(video.shape)
+                pooled = video.mean(dim=(2, 3, 4))
+                return self.head(pooled)
+
+        core = DummyVideoCore()
+        model = KineticsVideoClassifier(
+            "r2plus1d_18", core, classifier_attribute="head", weight_url="test-only"
+        ).eval()
+        raw = torch.full((1, 36, 3, 224, 224), 127, dtype=torch.uint8)
+        with torch.no_grad():
+            output = model(raw)
+        self.assertEqual(tuple(output.shape), (1, 7))
+        self.assertEqual(core.seen_shape, (1, 3, 16, 112, 112))
+        self.assertTrue(bool(torch.isfinite(output).all()))
+
     def test_classifier_replacement_preserves_sequential_head(self):
         module = torch.nn.Sequential(torch.nn.Dropout(0.2), torch.nn.Linear(32, 400))
         replacement, found = _replace_last_linear(module, 7)
