@@ -35,7 +35,7 @@ from experiments.relation.tcn_baseline import build_segments
 
 
 CLASS_NAMES = ["消毒", "进针", "运针", "扫散", "再灌注", "拔针", "固定"]
-VARIANTS = ("M0", "M1", "M2", "M3")
+VARIANTS = ("M0", "M1S", "M1", "M2", "M2S", "M3")
 
 
 @dataclass
@@ -553,8 +553,10 @@ def run(args) -> dict:
             "A_frozen": True,
             "variant_definitions": {
                 "M0": "frozen VideoMAE A only",
+                "M1S": "single-scale mean-pooling residual clip head; parameter-matched to M1",
                 "M1": "clip-internal 1/2/4 temporal-pyramid pooling and residual clip correction",
                 "M2": "inter-clip TCN on current mean-pooled global/local frozen features and A logits",
+                "M2S": "single-scale mean-pooling clip head plus inter-clip TCN; parameter-matched to M3",
                 "M3": "joint clip-internal multi-scale correction plus inter-clip TCN",
             },
             "experiment": private_protocol["experiment"],
