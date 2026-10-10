@@ -79,6 +79,16 @@
         "purpose": "current residual dilated TCN"
       },
       {
+        "name": "tcn_local",
+        "paper": "Matched receptive-field ablation of the current TCN",
+        "purpose": "same depth/width/kernel/parameter count as tcn, dilation [1,1,1] RF=7 rather than [1,2,4] RF=15",
+        "dilations": [
+          1,
+          1,
+          1
+        ]
+      },
+      {
         "name": "mstcnpp_adapted",
         "paper": "MS-TCN++ (TPAMI)",
         "purpose": "three-stage TCN-inspired clip-label refinement; not official dense-segmentation reproduction"
@@ -102,6 +112,7 @@
       "mlp",
       "bigru",
       "tcn",
+      "tcn_local",
       "mstcnpp_adapted",
       "local_transformer"
     ]
