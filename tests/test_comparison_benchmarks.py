@@ -13,6 +13,7 @@ from experiments.comparison.temporal_models import (
 from experiments.comparison.vision_models import (
     KineticsVideoClassifier, VISION_BACKBONES, _replace_last_linear,
 )
+from experiments.comparison.foundation_models import FrozenFoundationLinearProbe
 
 
 class TemporalComparisonTest(unittest.TestCase):
@@ -187,10 +188,70 @@ class TemporalComparisonTest(unittest.TestCase):
 
 
 class VisionWrapperTest(unittest.TestCase):
-    def test_declared_vision_backbones_cover_three_families(self):
+    def test_declared_vision_backbones_cover_kinetics_and_foundation_families(self):
         self.assertEqual(
-            set(VISION_BACKBONES), {"mvit_v2_s", "swin3d_t", "r2plus1d_18"}
+            set(VISION_BACKBONES),
+            {
+                "mvit_v2_s",
+                "swin3d_t",
+                "r2plus1d_18",
+                "vjepa2_vitl",
+                "internvideo_next_base",
+            },
         )
+
+    def test_foundation_linear_probe_freezes_encoder_and_returns_seven_logits(self):
+        class StubEncoder(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.scale = torch.nn.Parameter(torch.ones(1))
+
+            def forward(self, nested_video):
+                video = nested_video[0][0]
+                pooled = video.mean(dim=(2, 3, 4)) * self.scale
+                return [pooled.unsqueeze(1)]
+
+        model = FrozenFoundationLinearProbe(
+            name="vjepa2_vitl",
+            core=StubEncoder(),
+            feature_dim=3,
+            model_kind="vjepa2",
+            mean=(0.45, 0.45, 0.45),
+            std=(0.225, 0.225, 0.225),
+            input_size=(256, 256),
+            crop_size=(256, 256),
+            rescale_factor=1.0 / 255.0,
+            audit={"test": True},
+        )
+        model.set_mode("linear_probe")
+        raw = torch.randint(0, 256, (1, 36, 3, 224, 224), dtype=torch.uint8)
+        logits = model(raw)
+        self.assertEqual(tuple(logits.shape), (1, 7))
+        self.assertTrue(bool(torch.isfinite(logits).all()))
+        logits.sum().backward()
+        self.assertIsNotNone(model.head.weight.grad)
+        self.assertIsNone(model.core.scale.grad)
+        self.assertFalse(model.core.scale.requires_grad)
+
+    def test_foundation_linear_probe_rejects_full_finetuning(self):
+        class StubEncoder(torch.nn.Module):
+            def forward(self, nested_video):
+                return [nested_video[0][0].mean(dim=(2, 3, 4)).unsqueeze(1)]
+
+        model = FrozenFoundationLinearProbe(
+            name="vjepa2_vitl",
+            core=StubEncoder(),
+            feature_dim=3,
+            model_kind="vjepa2",
+            mean=(0.45, 0.45, 0.45),
+            std=(0.225, 0.225, 0.225),
+            input_size=(256, 256),
+            crop_size=(256, 256),
+            rescale_factor=1.0 / 255.0,
+            audit={"test": True},
+        )
+        with self.assertRaisesRegex(ValueError, "linear_probe"):
+            model.set_mode("finetune")
 
 
     def test_video_wrapper_samples_sixteen_frames_and_applies_model_crop(self):
