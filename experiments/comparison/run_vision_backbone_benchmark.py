@@ -52,25 +52,31 @@ class RawCacheClipDataset(Dataset):
 
 
 
-def _load_existing_a_reference(index_path: Path, datasets, data_audit):
+def _load_existing_a_reference(index_path: Path, source_protocol_dir: Path, datasets, data_audit):
     """Validate and score the current frozen VideoMAE A on these exact val clips."""
     index_path = index_path.expanduser().resolve()
+    source_protocol_dir = source_protocol_dir.expanduser().resolve()
     index = load_feature_index(index_path)
     seal_path = index_path.parent / "protocol.json"
-    if not seal_path.is_file():
-        raise ValueError("existing A feature directory must contain its sealed protocol.json")
+    audit_path = source_protocol_dir / "audit.json"
+    if not seal_path.is_file() or not audit_path.is_file():
+        raise ValueError("existing A reference requires its export seal and source-protocol audit")
     seal = json.loads(seal_path.read_text(encoding="utf-8"))
+    actual_split_counts = {
+        split: sum(row["split"] == split for row in index.clips.values())
+        for split in ("train", "val")
+    }
     if (
-        seal.get("schema") != "fsn-videomae2-source-relation-evidence-v1"
-        or seal.get("status") != "complete"
+        seal.get("status") != "complete"
         or seal.get("A_frozen") is not True
         or seal.get("index_sha256") != sha256_file(index_path)
         or seal.get("checkpoint_sha256") != index.checkpoint_sha256
         or seal.get("data_protocol") != video_data.DATA_PROTOCOL
-        or seal.get("split_counts") != data_audit["counts"]
         or seal.get("train_manifest_sha256") != data_audit["manifest_sha256"]["train"]
         or seal.get("val_manifest_sha256") != data_audit["manifest_sha256"]["val"]
-        or seal.get("test_read") is not False
+        or seal.get("source_audit_sha256") != sha256_file(audit_path)
+        or seal.get("test_read", False) is not False
+        or actual_split_counts != data_audit["counts"]
     ):
         raise ValueError("existing VideoMAE A export does not match the sealed visual benchmark protocol")
 
@@ -505,10 +511,15 @@ def run(args):
     # This preflight verifies the immutable manifests, every cache entry, split
     # and class coverage before any output directory or model is created.
     datasets, data_audit = video_data.audit_frozen_data(manifest_dir, cache_dir)
-    a_reference = _load_existing_a_reference(Path(args.existing_a_index), datasets, data_audit)
+    a_reference = _load_existing_a_reference(
+        Path(args.existing_a_index), Path(args.reference_source_protocol_dir), datasets, data_audit
+    )
     repo = Path(__file__).resolve().parents[2]
     a_index_root = Path(args.existing_a_index).expanduser().resolve().parent
-    output = _safe_output(Path(args.output), (repo, manifest_dir, cache_dir, a_index_root))
+    reference_source_dir = Path(args.reference_source_protocol_dir).expanduser().resolve()
+    output = _safe_output(
+        Path(args.output), (repo, manifest_dir, cache_dir, a_index_root, reference_source_dir)
+    )
     raw_datasets = {split: RawCacheClipDataset(dataset) for split, dataset in datasets.items()}
     output.mkdir(parents=False)
 
@@ -632,6 +643,8 @@ def parse_args(argv=None):
     parser.add_argument("--cache-dir", type=Path, required=True)
     parser.add_argument("--existing-a-index", type=Path, required=True,
                         help="sealed current VideoMAE A index.jsonl for same-protocol reference")
+    parser.add_argument("--reference-source-protocol-dir", type=Path, required=True,
+                        help="the source-protocol directory hashed by the A export seal")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--models", default="mvit_v2_s,swin3d_t,r2plus1d_18")
