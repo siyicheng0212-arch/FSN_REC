@@ -106,8 +106,10 @@ artifacts local.
 - M2 vs M0: inter-clip TCN gain on the original A evidence.
 - M2S vs M1S: context gain with the single-scale mean-control head.
 - M3 vs M1: context gain with the multi-scale clip head.
-- If M3 only beats M0 but M1 and M2 do not help separately, do not claim both
-  modules independently contribute; report the interaction and investigate it.
+- Do not claim multi-scale pooling helps unless M1 beats the matched M1S control
+  and/or M3 beats the matched M2S control. Do not claim context helps unless
+  the relevant context-on/off pairs improve. If only M3 beats M0, report the
+  combined interaction rather than attributing the gain to both modules.
 - Use the duration and source slices only as diagnostics. Groups may omit one
   or more action classes, so compare present_class_macro_f1 as well as the
   fixed seven-class Macro-F1 and always report slice support.
