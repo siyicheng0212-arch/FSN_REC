@@ -102,7 +102,7 @@ From the repository root and the same environment used for the existing
 VideoMAE experiments:
 
 ~~~bash
-python -m unittest tests.test_comparison_benchmarks -v
+python -m unittest tests.test_dual_timescale tests.test_comparison_benchmarks -v
 ~~~
 
 The benchmark code has not been run in the user's GPU environment. Do not skip
