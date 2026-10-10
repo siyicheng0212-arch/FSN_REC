@@ -173,7 +173,10 @@ def _class_weights(dataset: RawCacheClipDataset, device, mode: str) -> torch.Ten
 
 
 def _autocast(device: torch.device):
-    enabled = device.type == "cuda" and torch.cuda.is_bf16_supported()
+    enabled = False
+    if device.type == "cuda":
+        with torch.cuda.device(device):
+            enabled = torch.cuda.is_bf16_supported()
     return torch.autocast(device_type=device.type, dtype=torch.bfloat16, enabled=enabled)
 
 
@@ -294,7 +297,8 @@ def _train_epoch(model, loader, optimizer, weights, device, args, flip_generator
     _set_training_mode(model, args.mode)
     iterator = iter(loader)
     steps = samples = 0
-    loss_values = []
+    weighted_ce_sum = 0.0
+    weight_mass_sum = 0.0
     started = time.perf_counter()
 
     while True:
@@ -331,7 +335,7 @@ def _train_epoch(model, loader, optimizer, weights, device, args, flip_generator
             if not bool(torch.isfinite(loss)) or not bool(torch.isfinite(logits).all()):
                 raise FloatingPointError("nonfinite training loss/logits")
             loss.backward()
-            loss_values.append(float(numerator.detach().cpu()))
+            weighted_ce_sum += float(numerator.detach().cpu())
             samples += len(target)
 
         grad_norm = nn.utils.clip_grad_norm_(
@@ -341,6 +345,7 @@ def _train_epoch(model, loader, optimizer, weights, device, args, flip_generator
         if not bool(torch.isfinite(grad_norm)):
             raise FloatingPointError("nonfinite gradient norm")
         optimizer.step()
+        weight_mass_sum += window_weight_mass
         steps += 1
 
     if samples != len(loader.dataset):
@@ -348,7 +353,7 @@ def _train_epoch(model, loader, optimizer, weights, device, args, flip_generator
     return {
         "samples_seen": samples,
         "optimizer_steps": steps,
-        "weighted_ce_numerator_sum": float(sum(loss_values)),
+        "train_weighted_ce": weighted_ce_sum / max(weight_mass_sum, 1e-12),
         "train_seconds": time.perf_counter() - started,
     }
 
