@@ -38,7 +38,10 @@ The FSN modules have standalone PyTorch tests:
 
 ```bash
 python -m unittest tests/test_fsn_modules.py -v
+python -m unittest tests/test_video_grouping_time_units tests.test_build_dataset_duplicates -v
 ```
+
+The data-tool tests cover explicit numeric time units and video-level grouping. Run them before rebuilding manifests; numeric-only timestamps intentionally fail without an explicit unit.
 
 ## Runnable three-model pilot
 
