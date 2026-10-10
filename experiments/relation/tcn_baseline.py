@@ -34,34 +34,17 @@ class TCNConfig:
     hidden_dim: int = 64
     blocks: int = 3
     dropout: float = .1
-    # None preserves the historical powers-of-two schedule and serialized
-    # evidence schema. Explicit schedules enable controlled local-context tests.
-    dilations: tuple[int, ...] | None = None
 
     def __post_init__(self):
         if min(self.global_dim, self.local_dim, self.hidden_dim, self.blocks) < 1:
             raise ValueError("TCN dimensions and blocks must be positive")
         if not math.isfinite(self.dropout) or not 0 <= self.dropout < 1:
             raise ValueError("dropout must be in [0,1)")
-        if self.dilations is not None:
-            try:
-                schedule = tuple(self.dilations)
-            except TypeError as error:
-                raise ValueError("dilations must contain one positive integer per block") from error
-            if (len(schedule) != self.blocks
-                    or any(type(value) is not int or value < 1 for value in schedule)):
-                raise ValueError("dilations must contain one positive integer per block")
-            object.__setattr__(self, "dilations", schedule)
-
-    @property
-    def dilation_schedule(self):
-        return self.dilations if self.dilations is not None else tuple(
-            2**level for level in range(self.blocks))
 
     @property
     def receptive_field_clips(self):
-        # Each width-three convolution adds 2*dilation to the receptive field.
-        return 1 + 2 * sum(self.dilation_schedule)
+        # One width-three convolution per residual block, dilation 1, 2, 4...
+        return 1 + 2 * (2**self.blocks - 1)
 
 
 class TemporalBlock(nn.Module):
@@ -86,8 +69,8 @@ class FrozenEvidenceTCN(nn.Module):
         self.stem = nn.Sequential(nn.Linear(config.global_dim + config.local_dim + 7,
                                             config.hidden_dim),
                                   nn.LayerNorm(config.hidden_dim), nn.GELU())
-        self.blocks = nn.ModuleList(TemporalBlock(config.hidden_dim, dilation, config.dropout)
-                                    for dilation in config.dilation_schedule)
+        self.blocks = nn.ModuleList(TemporalBlock(config.hidden_dim, 2**level, config.dropout)
+                                    for level in range(config.blocks))
         self.classifier = nn.Conv1d(config.hidden_dim, 7, 1)
         nn.init.zeros_(self.classifier.weight)
         nn.init.zeros_(self.classifier.bias)
@@ -282,8 +265,6 @@ def _write_json(path, value):
 def _validate_args(args):
     if any(getattr(args, name) < 1 for name in ("epochs", "patience", "batch_size", "hidden_dim", "blocks")):
         raise ValueError("positive epochs, patience, batch size and TCN size are required")
-    if args.dilations is not None and len(args.dilations) != args.blocks:
-        raise ValueError("--dilations must provide exactly one value per TCN block")
     if not math.isfinite(args.lr) or args.lr <= 0 or not math.isfinite(args.weight_decay) or args.weight_decay < 0:
         raise ValueError("invalid optimizer settings")
     if args.seed < 0:
@@ -331,8 +312,7 @@ def train(args):
     torch.manual_seed(args.seed)
     if device.type == "cuda":
         torch.cuda.manual_seed_all(args.seed)
-    config = TCNConfig(index.global_dim, index.local_dim, args.hidden_dim, args.blocks,
-                        args.dropout, args.dilations)
+    config = TCNConfig(index.global_dim, index.local_dim, args.hidden_dim, args.blocks, args.dropout)
     model = FrozenEvidenceTCN(config).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     loader = DataLoader(SegmentDataset(train_segments), batch_size=args.batch_size, shuffle=True,
@@ -406,7 +386,6 @@ def train(args):
                "train_clip_count": sum(len(s.clip_ids) for s in train_segments),
                "val_clip_count": len(private),
                "train_segments": len(train_segments), "val_segments": len(val_segments),
-               "dilations": list(config.dilation_schedule),
                "receptive_field_clips": config.receptive_field_clips,
                "trainable_parameters": sum(p.numel() for p in model.parameters()),
                "best_epoch": saved["epoch"], "epochs_completed": len(history),
@@ -418,16 +397,6 @@ def train(args):
         for row in private:
             stream.write(json.dumps(row, ensure_ascii=False, allow_nan=False) + "\n")
     return summary
-
-
-def _parse_dilations(value: str) -> tuple[int, ...]:
-    try:
-        result = tuple(int(part.strip()) for part in value.split(","))
-    except (TypeError, ValueError) as error:
-        raise argparse.ArgumentTypeError("dilations must be comma-separated positive integers") from error
-    if not result or any(value < 1 for value in result):
-        raise argparse.ArgumentTypeError("dilations must be comma-separated positive integers")
-    return result
 
 
 def parser():
@@ -442,8 +411,6 @@ def parser():
                         help="number of variable-length chain segments per optimizer batch")
     result.add_argument("--hidden-dim", type=int, default=64)
     result.add_argument("--blocks", type=int, default=3)
-    result.add_argument("--dilations", type=_parse_dilations, default=None,
-                        help="comma-separated positive dilation per block; default is 1,2,4,...")
     result.add_argument("--dropout", type=float, default=.1)
     result.add_argument("--lr", type=float, default=.001)
     result.add_argument("--weight-decay", type=float, default=.01)
