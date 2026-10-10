@@ -19,7 +19,7 @@ from experiments.relation.tcn_baseline import FrozenEvidenceTCN, TCNConfig
 
 
 NUM_CLASSES = 7
-VALID_MODELS = ("mlp", "bigru", "tcn", "mstcnpp_adapted", "local_transformer")
+VALID_MODELS = ("mlp", "bigru", "tcn", "tcn_local", "mstcnpp_adapted", "local_transformer")
 
 
 class ResidualTemporalBlock(nn.Module):
@@ -128,14 +128,21 @@ class TemporalComparisonModel(nn.Module):
             nn.init.zeros_(self.classifier[-1].weight)
             nn.init.zeros_(self.classifier[-1].bias)
 
-        elif model_name == "tcn":
+        elif model_name in {"tcn", "tcn_local"}:
+            # Matched receptive-field control: same three blocks/channels,
+            # changing only the dilation schedule from [1,2,4] (RF=15) to
+            # [1,1,1] (RF=7). The local variant is fixed, independent of CLI
+            # overrides intended for the main TCN baseline.
+            self.temporal_dilations = (
+                tuple(tcn_dilations) if model_name == "tcn" else (1, 1, 1)
+            )
             config = TCNConfig(
                 global_dim=global_dim,
                 local_dim=local_dim,
                 hidden_dim=hidden_dim,
-                blocks=len(tcn_dilations),
+                blocks=len(self.temporal_dilations),
                 dropout=dropout,
-                dilations=tcn_dilations,
+                dilations=self.temporal_dilations,
             )
             self.tcn = FrozenEvidenceTCN(config)
 
