@@ -1,4 +1,4 @@
-"""Train and compare frozen-VideoMAE dual-timescale ablations M0-M3.
+"""Train and compare frozen-VideoMAE dual-timescale ablations M0, M1S, M1, M2, M2S and M3.
 
 M0: original A logits; no learned parameters.
 M1: within-clip multi-scale feature pooling only.
@@ -12,12 +12,11 @@ identifier-free aggregate summary; keep the output directory private.
 from __future__ import annotations
 
 import argparse
-import copy
 import json
 import math
 import random
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -373,6 +372,8 @@ def _train_variant(variant, index, train_segments, val_segments, args, device, v
             losses.append(float(loss.detach().cpu()))
         val_summary, _ = _evaluate(model, val_loader, device)
         score = float(val_summary["macro_f1"])
+        print(f"[{variant}] epoch {epoch}/{args.epochs}: train_loss={float(np.mean(losses)) if losses else 0.0:.6f}; "
+              f"val_macro_f1={score:.6f}; best={best_f1:.6f}", flush=True)
         history.append({
             "epoch": epoch,
             "mean_train_loss": float(np.mean(losses)) if losses else 0.0,
@@ -543,6 +544,26 @@ def run(args) -> dict:
                 "accuracy": result["metrics"]["accuracy"],
                 "macro_f1_delta_vs_M0": None if baseline_f1 is None else score - baseline_f1,
             }
+        contrast_specs = {
+            "multiscale_without_context_M1_minus_M1S": ("M1", "M1S"),
+            "multiscale_with_context_M3_minus_M2S": ("M3", "M2S"),
+            "context_on_A_M2_minus_M0": ("M2", "M0"),
+            "context_with_single_scale_M2S_minus_M1S": ("M2S", "M1S"),
+            "context_with_multiscale_M3_minus_M1": ("M3", "M1"),
+        }
+        factorial_contrasts = {}
+        for name, (left, right) in contrast_specs.items():
+            if left in summaries and right in summaries:
+                factorial_contrasts[name] = {
+                    "left": left,
+                    "right": right,
+                    "macro_f1_difference": (
+                        summaries[left]["metrics"]["macro_f1"] - summaries[right]["metrics"]["macro_f1"]
+                    ),
+                    "accuracy_difference": (
+                        summaries[left]["metrics"]["accuracy"] - summaries[right]["metrics"]["accuracy"]
+                    ),
+                }
         public_summary = {
             "schema": "fsn-dual-timescale-v1",
             "status": "completed",
@@ -561,6 +582,7 @@ def run(args) -> dict:
             },
             "experiment": private_protocol["experiment"],
             "comparison": comparison,
+            "factorial_contrasts": factorial_contrasts,
             "variants": summaries,
             "interpretation_warning": (
                 "single-seed development experiment only; source-rule adjacency is weak metadata policy, "
