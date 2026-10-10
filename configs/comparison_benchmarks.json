@@ -1,0 +1,138 @@
+{
+  "name": "fsn_visual_and_temporal_comparison_benchmarks",
+  "status": "code_ready_not_trained",
+  "development_protocol": {
+    "data_protocol": "fsn-full-7372-823-development-v1",
+    "train": 7372,
+    "validation": 823,
+    "validation_role": "reused development validation, not independent test",
+    "test_read": false
+  },
+  "visual_backbones": {
+    "current_reference": {
+      "name": "VideoMAE-V2 ViT-B/16",
+      "initialization": "existing frozen-A FSN-finetuned distilled K710 checkpoint",
+      "existing_val_macro_f1_seed42": 0.89695956623777,
+      "existing_val_accuracy_seed42": 0.9100850546780073,
+      "note": "historical exploratory reference, not rerun by visual-backbone script"
+    },
+    "alternatives": [
+      {
+        "name": "mvit_v2_s",
+        "family": "multiscale video Transformer",
+        "weights": "torchvision MViT_V2_S_Weights.KINETICS400_V1"
+      },
+      {
+        "name": "swin3d_t",
+        "family": "local-window video Transformer",
+        "weights": "torchvision Swin3D_T_Weights.KINETICS400_V1"
+      },
+      {
+        "name": "r2plus1d_18",
+        "family": "factorized 3D CNN",
+        "weights": "torchvision R2Plus1D_18_Weights.KINETICS400_V1"
+      }
+    ],
+    "training_modes": {
+      "linear_probe": "freeze Kinetics-400 pretrained backbone; train seven-class head only; screening",
+      "finetune": "fine-tune all backbone and seven-class head; use for paper comparison"
+    },
+    "common": {
+      "temporal_indices": "same 16 uniformly sampled positions from existing 36-frame 224-square cache",
+      "selection_metric": "full seven-class val823 Macro-F1; earliest epoch on ties",
+      "test_read": false
+    }
+  },
+  "temporal_heads": {
+    "feature_source": "same frozen VideoMAE-V2 token features and seven A logits",
+    "input_representation": "mean-pooled per-clip global tokens + mean-pooled local tokens + A logits",
+    "methods": [
+      {
+        "name": "A_only",
+        "purpose": "frozen current visual model"
+      },
+      {
+        "name": "mlp",
+        "purpose": "per-clip residual MLP without neighbor access"
+      },
+      {
+        "name": "bigru",
+        "paper": "An Empirical Study on Activity Recognition in Long Surgical Videos (ML4H 2022)",
+        "purpose": "bidirectional recurrent temporal baseline"
+      },
+      {
+        "name": "tcn",
+        "paper": "TCN baseline",
+        "purpose": "current residual dilated TCN"
+      },
+      {
+        "name": "mstcnpp_adapted",
+        "paper": "MS-TCN++ (TPAMI)",
+        "purpose": "three-stage TCN-inspired clip-label refinement; not official dense-segmentation reproduction"
+      },
+      {
+        "name": "local_transformer",
+        "paper": "ASFormer",
+        "purpose": "local-attention Transformer adapted to clip-label sequence classification"
+      }
+    ],
+    "seeds": [
+      42,
+      10,
+      1217
+    ],
+    "selection_metric": "full seven-class val823 Macro-F1; earliest epoch on ties",
+    "source_rule_is_ground_truth_continuity": false
+  },
+  "literature": [
+    {
+      "name": "VideoMAE",
+      "year": 2022,
+      "venue": "NeurIPS",
+      "url": "https://proceedings.neurips.cc/paper_files/paper/2022/file/416f9cb3276121c42eebb86352a4354a-Paper-Conference.pdf"
+    },
+    {
+      "name": "VideoMAE V2",
+      "year": 2023,
+      "venue": "CVPR",
+      "url": "https://openaccess.thecvf.com/content/CVPR2023/html/Wang_VideoMAE_V2_Scaling_Video_Masked_Autoencoders_With_Dual_Masking_CVPR_2023_paper.html"
+    },
+    {
+      "name": "MViT",
+      "year": 2021,
+      "venue": "ICCV",
+      "url": "https://openaccess.thecvf.com/content/ICCV2021/html/Fan_Multiscale_Vision_Transformers_ICCV_2021_paper.html"
+    },
+    {
+      "name": "Video Swin Transformer",
+      "year": 2021,
+      "venue": "ICCV",
+      "url": "https://openaccess.thecvf.com/content/ICCV2021/html/Liu_Video_Swin_Transformer_ICCV_2021_paper.html"
+    },
+    {
+      "name": "R(2+1)D",
+      "year": 2018,
+      "venue": "CVPR",
+      "url": "https://openaccess.thecvf.com/content_cvpr_2018/html/Tran_A_Closer_Look_CVPR_2018_paper.html"
+    },
+    {
+      "name": "An Empirical Study on Activity Recognition in Long Surgical Videos",
+      "year": 2022,
+      "venue": "ML4H",
+      "url": "https://proceedings.mlr.press/v193/he22a.html"
+    },
+    {
+      "name": "MS-TCN++",
+      "year": 2020,
+      "venue": "TPAMI",
+      "url": "https://arxiv.org/abs/2006.09220"
+    },
+    {
+      "name": "ASFormer",
+      "year": 2021,
+      "venue": "arXiv",
+      "url": "https://arxiv.org/abs/2110.08568"
+    }
+  ],
+  "training_started": false
+}
