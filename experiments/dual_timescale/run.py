@@ -136,6 +136,8 @@ def _preflight(index_path: Path, source_dir: Path):
         export_protocol.get("status") != "complete"
         or export_protocol.get("A_frozen") is not True
         or export_protocol.get("index_sha256") != sha256_file(index_path)
+        or export_protocol.get("checkpoint_sha256") != index.checkpoint_sha256
+        or export_protocol.get("source_audit_sha256") != sha256_file(source_dir / "audit.json")
         or export_protocol.get("data_protocol") != DATA_PROTOCOL
         or export_protocol.get("split_counts") != EXPECTED_COUNTS
         or export_protocol.get("train_manifest_sha256") != EXPECTED_MANIFEST_SHA["train"]
@@ -443,8 +445,12 @@ def run(args) -> dict:
     variants = tuple(item.strip().upper() for item in args.variants.split(",") if item.strip())
     if not variants or len(set(variants)) != len(variants) or not set(variants) <= set(VARIANTS):
         raise ValueError(f"--variants must be a comma-separated unique subset of {VARIANTS}")
+    if args.seed < 0:
+        raise ValueError("seed must be nonnegative")
     if any(getattr(args, name) < 1 for name in ("epochs", "patience", "batch_size_segments", "embedding_dim", "hidden_dim", "blocks")):
         raise ValueError("epochs, patience, batch size, embedding dim, hidden dim and blocks must be positive")
+    if not math.isfinite(args.dropout) or not 0 <= args.dropout < 1:
+        raise ValueError("dropout must be finite and in [0,1)")
     if args.grad_clip_norm <= 0 or not math.isfinite(args.grad_clip_norm):
         raise ValueError("grad_clip_norm must be positive and finite")
     if args.lr <= 0 or not math.isfinite(args.lr) or args.weight_decay < 0 or not math.isfinite(args.weight_decay):
@@ -498,7 +504,7 @@ def run(args) -> dict:
             "grad_clip_norm": args.grad_clip_norm,
             "selection_metric": "full seven-class val823 Macro-F1; earliest epoch on ties",
             "dilations": list(args.dilations),
-            "status": "code_ready; training begins only when this script is explicitly run",
+            "execution_mode": "explicit_cli_run; no automatic resume or retry",
         },
     }
     _write_json(output / "private_protocol.json", private_protocol)
@@ -513,6 +519,7 @@ def run(args) -> dict:
     )
     try:
         for variant in variants:
+            print(f"starting variant {variant}", flush=True)
             variant_dir = output / variant
             variant_dir.mkdir()
             if variant == "M0":
