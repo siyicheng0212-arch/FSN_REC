@@ -34,6 +34,18 @@
         "name": "r2plus1d_18",
         "family": "factorized 3D CNN",
         "weights": "torchvision R2Plus1D_18_Weights.KINETICS400_V1"
+      },
+      {
+        "name": "vjepa2_vitl",
+        "family": "self-supervised video foundation ViT",
+        "weights": "official facebookresearch/vjepa2 ViT-L target_encoder checkpoint",
+        "mode": "frozen linear probe only"
+      },
+      {
+        "name": "internvideo_next_base",
+        "family": "self-supervised video foundation encoder",
+        "weights": "revliter/internvideo_next_base_p14_res224_f16 pinned revision f673b6016189b6dfc4e20ba92e7f01c5a18eb724",
+        "mode": "frozen linear probe only"
       }
     ],
     "training_modes": {
