@@ -231,7 +231,7 @@ python -m experiments.comparison.run_vision_backbone_benchmark \
   --device cuda:0 \
   --models vjepa2_vitl,internvideo_next_base \
   --mode linear_probe --seed 42 --epochs 5 --patience 2 \
-  --batch-size 2 --eval-batch-size 2 --accumulation-steps 4 \
+  --batch-size 1 --eval-batch-size 1 --accumulation-steps 4 \
   --vjepa2-repo /absolute/path/to/vjepa2 \
   --vjepa2-checkpoint /absolute/path/to/vitl.pt \
   --workers 4
