@@ -151,7 +151,7 @@ solely from one repeated-use validation split.
 ## 3. Visual-backbone comparison (first screen)
 
 Pass the same full manifests and 36-frame cache already used by the VideoMAE
-V2 run. The script validates the manifest SHA, class coverage, cache mapping, cache metadata, and the existing A index SHA/schema/clip coverage before creating an output directory. Add --existing-a-index pointing to the same sealed VideoMAE features index.jsonl used by the temporal benchmark and --reference-source-protocol-dir pointing to the matching source-protocol directory whose audit hash is recorded in the export seal. It may need internet access
+V2 run. The script validates the manifest SHA, class coverage, cache mapping, cache metadata, and the existing A export seal, checkpoint hash, source-audit hash and exact clip coverage before creating an output directory. Add --existing-a-index pointing to the same sealed VideoMAE features index.jsonl used by the temporal benchmark and --reference-source-protocol-dir pointing to the matching source-protocol directory whose audit hash is recorded in the export seal. It may need internet access
 to fetch the named torchvision Kinetics-400 weights if they are not already in
 the local PyTorch weight cache.
 
