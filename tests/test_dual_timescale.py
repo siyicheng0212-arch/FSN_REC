@@ -77,6 +77,8 @@ class DualTimescaleTest(unittest.TestCase):
 
     def test_context_padding_does_not_change_real_positions(self):
         model = TemporalContextHead(feature_dim=5, hidden_dim=8, blocks=3, dropout=0).eval()
+        with torch.no_grad():
+            model.class_correction.weight.fill_(0.02)
         features = torch.randn(1, 2, 5)
         logits = torch.randn(1, 2, 7)
         valid = torch.ones(1, 2, dtype=torch.bool)
