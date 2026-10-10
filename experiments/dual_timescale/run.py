@@ -591,7 +591,7 @@ def parse_args(argv=None):
     parser.add_argument("--source-protocol-dir", required=True, help="completed source-protocol directory")
     parser.add_argument("--output", required=True, help="fresh private output directory outside the repository")
     parser.add_argument("--device", default="cuda")
-    parser.add_argument("--variants", default="M0,M1,M2,M3")
+    parser.add_argument("--variants", default="M0,M1S,M1,M2,M2S,M3")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--patience", type=int, default=5)
