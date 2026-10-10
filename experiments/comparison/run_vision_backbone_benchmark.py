@@ -61,7 +61,7 @@ def _load_existing_a_reference(index_path: Path, datasets, data_audit):
         raise ValueError("existing A feature directory must contain its sealed protocol.json")
     seal = json.loads(seal_path.read_text(encoding="utf-8"))
     if (
-        seal.get("schema") != video_data.SCHEMA
+        seal.get("schema") != "fsn-videomae2-source-relation-evidence-v1"
         or seal.get("status") != "complete"
         or seal.get("A_frozen") is not True
         or seal.get("index_sha256") != sha256_file(index_path)
