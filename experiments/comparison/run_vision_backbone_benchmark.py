@@ -443,7 +443,14 @@ def _write_jsonl(path: Path, rows):
 
 def _run_one(name, datasets, args, device, output):
     _seed(args.seed)
-    model, model_audit = build_backbone(name, pretrained=not args.random_init)
+    model, model_audit = build_backbone(
+        name,
+        pretrained=not args.random_init,
+        vjepa2_repo=args.vjepa2_repo,
+        vjepa2_checkpoint=args.vjepa2_checkpoint,
+        internvideo_next_model_id=args.internvideo_next_model_id,
+        internvideo_next_revision=args.internvideo_next_revision,
+    )
     model.set_mode(args.mode)
     model.to(device)
     optimizer, optimizer_groups = _make_optimizer(model, args.mode, args)
@@ -569,6 +576,21 @@ def run(args):
     names = tuple(part.strip().lower() for part in args.models.split(",") if part.strip())
     if not names or len(set(names)) != len(names) or not set(names) <= set(VISION_BACKBONES):
         raise ValueError(f"--models must be unique values from {VISION_BACKBONES}")
+    foundation_names = {"vjepa2_vitl", "internvideo_next_base"}
+    selected_foundations = foundation_names.intersection(names)
+    if selected_foundations and args.mode != "linear_probe":
+        raise ValueError(
+            "V-JEPA 2 and InternVideo-Next are currently supported only in --mode linear_probe; "
+            "their upstream full-finetuning recipes are not implemented in this benchmark."
+        )
+    if selected_foundations and args.random_init:
+        raise ValueError("foundation encoders require their published pretrained weights")
+    if "vjepa2_vitl" in selected_foundations:
+        if args.vjepa2_repo is None or args.vjepa2_checkpoint is None:
+            raise ValueError(
+                "vjepa2_vitl requires --vjepa2-repo and --vjepa2-checkpoint "
+                "for the official V-JEPA2 repository checkout and ViT-L checkpoint."
+            )
 
     device = torch.device(args.device)
     if device.type == "cuda" and not torch.cuda.is_available():
@@ -599,7 +621,11 @@ def run(args):
         "validation_role": "val823_reused_development_validation_not_independent_test",
         "test_read": False,
         "model_order": ["videomae_v2_A_reference", *names],
-        "initialization": "existing sealed fine-tuned VideoMAE A reference plus Kinetics-400 supervised torchvision weights unless --random-init",
+        "initialization": (
+            "existing sealed fine-tuned VideoMAE A reference; Kinetics-400 supervised torchvision "
+            "weights for mvit_v2_s/swin3d_t/r2plus1d_18; frozen upstream checkpoint plus a new "
+            "seven-class linear head for vjepa2_vitl/internvideo_next_base"
+        ),
         "existing_A_reference": {
             "index_sha256": a_reference["index_sha256"],
             "checkpoint_sha256": a_reference["checkpoint_sha256"],
@@ -685,8 +711,9 @@ def run(args):
             },
             "interpretation_warning": (
                 "single-seed development results; do not call val823 an independent test; "
-                "Kinetics-pretrained backbones differ in pretraining recipe; preprocessing was "
-                "kept architecture-compatible while sampling the same 16 temporal positions"
+                "Kinetics-pretrained and self-supervised foundation encoders differ in pretraining "
+                "recipe; foundation models are frozen linear-probe screens, not full fine-tuning; "
+                "preprocessing is model-specific while using the same 16 temporal sample positions"
             ),
         }
         _write_json(output / "public_safe_summary.json", public)
@@ -715,6 +742,24 @@ def parse_args(argv=None):
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--models", default="mvit_v2_s,swin3d_t,r2plus1d_18")
     parser.add_argument("--mode", choices=("linear_probe", "finetune"), default="linear_probe")
+    parser.add_argument(
+        "--vjepa2-repo", type=Path, default=None,
+        help="local checkout root of facebookresearch/vjepa2 (required for vjepa2_vitl)",
+    )
+    parser.add_argument(
+        "--vjepa2-checkpoint", type=Path, default=None,
+        help="local official V-JEPA2 ViT-L checkpoint with target_encoder weights",
+    )
+    parser.add_argument(
+        "--internvideo-next-model-id",
+        default="revliter/internvideo_next_base_p14_res224_f16",
+        help="Hugging Face repository ID for InternVideo-Next Base",
+    )
+    parser.add_argument(
+        "--internvideo-next-revision",
+        default="f673b6016189b6dfc4e20ba92e7f01c5a18eb724",
+        help="pinned Hugging Face revision for InternVideo-Next Base",
+    )
     parser.add_argument("--random-init", action="store_true")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--epochs", type=int, default=10)
