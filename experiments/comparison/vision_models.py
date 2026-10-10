@@ -8,7 +8,8 @@ from torch.nn import functional as F
 from experiments.modern_baselines import videomae2 as video_data
 
 
-VISION_BACKBONES = ("mvit_v2_s", "swin3d_t", "r2plus1d_18")
+VISION_BACKBONES = ("mvit_v2_s", "swin3d_t", "r2plus1d_18", "vjepa2_vitl", "internvideo_next_base")
+FOUNDATION_BACKBONES = ("vjepa2_vitl", "internvideo_next_base")
 
 
 def _replace_last_linear(module: nn.Module, num_classes: int):
@@ -124,10 +125,35 @@ class KineticsVideoClassifier(nn.Module):
         return logits
 
 
-def build_backbone(name: str, pretrained: bool = True) -> tuple[KineticsVideoClassifier, dict]:
-    """Construct a pinned torchvision model; weights are Kinetics-400 supervised."""
+def build_backbone(
+    name: str,
+    pretrained: bool = True,
+    *,
+    vjepa2_repo=None,
+    vjepa2_checkpoint=None,
+    internvideo_next_model_id: str = "revliter/internvideo_next_base_p14_res224_f16",
+    internvideo_next_revision: str = "f673b6016189b6dfc4e20ba92e7f01c5a18eb724",
+):
+    """Construct a comparison backbone with a documented initialization recipe.
+
+    The Kinetics alternatives support linear probing and full fine-tuning.
+    V-JEPA 2 and InternVideo-Next are exposed as frozen-encoder linear probes
+    only; their upstream training recipes are not reproduced by this runner.
+    """
     if name not in VISION_BACKBONES:
         raise ValueError(f"name must be one of {VISION_BACKBONES}")
+    if name in FOUNDATION_BACKBONES:
+        if not pretrained:
+            raise ValueError(f"{name} requires its published pretrained weights")
+        from experiments.comparison.foundation_models import build_foundation_backbone
+
+        return build_foundation_backbone(
+            name,
+            vjepa2_repo=vjepa2_repo,
+            vjepa2_checkpoint=vjepa2_checkpoint,
+            internvideo_next_model_id=internvideo_next_model_id,
+            internvideo_next_revision=internvideo_next_revision,
+        )
     try:
         from torchvision.models.video import (
             MViT_V2_S_Weights, R2Plus1D_18_Weights, Swin3D_T_Weights,
