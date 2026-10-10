@@ -11,6 +11,7 @@ import argparse
 import csv
 import hashlib
 import json
+import math
 import re
 import shutil
 import struct
@@ -76,14 +77,30 @@ def upload_copy_suffix_rank(media_key: str) -> int:
     return 1 if re.search(r"-\d+$", normalized_key(media_key)) else 0
 
 
-def parse_time(value: str) -> float:
+def parse_time(value: str, numeric_unit: str | None = None) -> float:
+    """Convert to seconds; never infer a numeric unit from magnitude or spelling."""
     value = value.strip()
     if ":" not in value:
-        return float(value)
+        if numeric_unit not in {"seconds", "milliseconds"}:
+            raise ValueError("numeric timestamp needs explicit seconds/milliseconds")
+        result = float(value) / (1000 if numeric_unit == "milliseconds" else 1)
+        if not math.isfinite(result):
+            raise ValueError("timestamp must be finite")
+        return result
     fields = value.split(":")
     if len(fields) != 3:
         raise ValueError(f"unsupported time token: {value}")
-    return int(fields[0]) * 3600 + int(fields[1]) * 60 + float(fields[2])
+    hours, minutes, seconds = int(fields[0]), int(fields[1]), float(fields[2])
+    if hours < 0 or not 0 <= minutes < 60 or not 0 <= seconds < 60:
+        raise ValueError("invalid clock timestamp")
+    return hours * 3600 + minutes * 60 + seconds
+
+
+def time_provenance(event, start, end, numeric_unit):
+    event.update(raw_start_time=start.strip(), raw_end_time=end.strip(),
+                 start_time_interpretation="clock_hms" if ":" in start else numeric_unit,
+                 end_time_interpretation="clock_hms" if ":" in end else numeric_unit)
+    return event
 
 
 def clean_label(raw_label: str | None) -> tuple[str | None, list[str]]:
@@ -123,7 +140,10 @@ def detect_format(text: str) -> str:
         return "tsv_rows"
     if re.search(r"^default\s+", text, re.MULTILINE) and re.search(r"^TC\s+", text, re.MULTILINE):
         return "elan_wide"
-    if any(RANGE_RE.fullmatch(line.strip()) and ":" in line for line in text.splitlines()):
+    lines = text.splitlines()
+    if any(RANGE_RE.fullmatch(line.strip()) and
+           (":" in line or (index and clean_label(lines[index - 1])[0] is not None))
+           for index, line in enumerate(lines)):
         return "label_time_blocks"
     if extract_header_metadata(text)["original_media_uri"]:
         return "metadata_only"
@@ -156,7 +176,7 @@ def base_event(index: int, start: float, end: float, raw_label: str | None, line
     }
 
 
-def parse_tsv_rows(text: str) -> list[dict[str, Any]]:
+def parse_tsv_rows(text: str, numeric_unit: str | None = None) -> list[dict[str, Any]]:
     events: list[dict[str, Any]] = []
     for line_number, line in enumerate(text.splitlines(), 1):
         if not line.strip():
@@ -168,16 +188,24 @@ def parse_tsv_rows(text: str) -> list[dict[str, Any]]:
             events.append(event)
             continue
         try:
-            start = float(columns[3].strip())
-            end = float(columns[5].strip())
+            float(columns[3].strip())
+            float(columns[5].strip())
+            raw_start, raw_end = columns[3], columns[5]
         except ValueError:
-            start = parse_time(columns[2])
-            end = parse_time(columns[4])
-        events.append(base_event(len(events), start, end, columns[-1], line_number))
+            raw_start, raw_end = columns[2], columns[4]
+        start, end = parse_time(raw_start, numeric_unit), parse_time(raw_end, numeric_unit)
+        # When both representations exist they must agree, not silently pick one.
+        if ":" in columns[2] and ":" in columns[4]:
+            clock_start, clock_end = parse_time(columns[2]), parse_time(columns[4])
+            if max(abs(start - clock_start), abs(end - clock_end)) > 0.001001:
+                raise ValueError("TSV numeric and clock timestamps disagree")
+        events.append(time_provenance(
+            base_event(len(events), start, end, columns[-1], line_number),
+            raw_start, raw_end, numeric_unit))
     return events
 
 
-def parse_wide(text: str) -> list[dict[str, Any]]:
+def parse_wide(text: str, numeric_unit: str | None = None) -> list[dict[str, Any]]:
     """Parse ELAN wide text by column position, preserving blank labels.
 
     Each label begins at the same character offset as its matching time range.
@@ -195,59 +223,50 @@ def parse_wide(text: str) -> list[dict[str, Any]]:
             continue
         label_positions: dict[int, str] = {}
         # Multiple spaces delimit cells; a single space may be part of an entered label.
-        for match in re.finditer(r"\S+(?:[ \u3000]\S+)*", line):
-            if match.group() != "default":
-                label_positions[match.start()] = match.group().strip()
+        tier_end = re.match(r"^default\s+", line).end()
+        for match in re.compile(r"\S+(?:[ \u3000]\S+)*").finditer(line, tier_end):
+            label_positions[match.start()] = match.group().strip()
         range_matches = list(RANGE_RE.finditer(lines[tc_idx]))
-        integer_millisecond_row = bool(range_matches) and all(
-            ":" not in match.group(1)
-            and ":" not in match.group(2)
-            and "." not in match.group(1)
-            and "." not in match.group(2)
-            for match in range_matches
-        ) and max(float(match.group(2)) for match in range_matches) >= 1000
         for match in range_matches:
             raw_label = label_positions.get(match.start())
-            start = parse_time(match.group(1))
-            end = parse_time(match.group(2))
-            if integer_millisecond_row:
-                start /= 1000
-                end /= 1000
+            start = parse_time(match.group(1), numeric_unit)
+            end = parse_time(match.group(2), numeric_unit)
             event = base_event(
                 len(events), start, end, raw_label, tc_idx + 1
             )
-            if integer_millisecond_row:
-                event["qc_flags"].append("integer_millisecond_timebase_normalized_to_seconds")
+            time_provenance(event, match.group(1), match.group(2), numeric_unit)
             if raw_label is None:
                 event["qc_flags"].append("blank_label_cell_preserved_by_column_alignment")
             events.append(event)
     return events
 
 
-def parse_blocks(text: str) -> list[dict[str, Any]]:
+def parse_blocks(text: str, numeric_unit: str | None = None) -> list[dict[str, Any]]:
     lines = text.splitlines()
     events: list[dict[str, Any]] = []
     for idx, line in enumerate(lines):
         match = RANGE_RE.fullmatch(line.strip())
-        if not match or ":" not in line:
+        if not match:
             continue
         label_idx = idx - 1
         while label_idx >= 0 and not lines[label_idx].strip():
             label_idx -= 1
         raw_label = lines[label_idx].strip() if label_idx >= 0 else None
-        events.append(
-            base_event(len(events), parse_time(match.group(1)), parse_time(match.group(2)), raw_label, idx + 1)
-        )
+        events.append(time_provenance(
+            base_event(len(events), parse_time(match.group(1), numeric_unit),
+                       parse_time(match.group(2), numeric_unit), raw_label, idx + 1),
+            match.group(1), match.group(2), numeric_unit))
     return events
 
 
-def parse_events(text: str, input_format: str) -> list[dict[str, Any]]:
+def parse_events(text: str, input_format: str,
+                 numeric_unit: str | None = None) -> list[dict[str, Any]]:
     if input_format == "tsv_rows":
-        return parse_tsv_rows(text)
+        return parse_tsv_rows(text, numeric_unit)
     if input_format == "elan_wide":
-        return parse_wide(text)
+        return parse_wide(text, numeric_unit)
     if input_format == "label_time_blocks":
-        return parse_blocks(text)
+        return parse_blocks(text, numeric_unit)
     return []
 
 
@@ -546,6 +565,9 @@ def main() -> None:
     parser.add_argument("--val-ratio", type=float, default=0.10)
     parser.add_argument("--test-ratio", type=float, default=0.10)
     parser.add_argument("--seed", default="fsn-reviewer-split-v2")
+    for export_format in ("tsv", "wide", "blocks"):
+        parser.add_argument(f"--{export_format}-numeric-time-unit",
+                            choices=("seconds", "milliseconds"))
     parser.add_argument(
         "--skip-video-sha256", action="store_true",
         help="read container metadata without hashing every full video (faster for development)",
@@ -606,7 +628,10 @@ def main() -> None:
         source_rel = relpath(txt_path, workspace)
         record_id = f"{source}-{stable_hash(source_rel, 16)}"
         input_format = detect_format(text)
-        events = parse_events(text, input_format)
+        unit = {"tsv_rows": args.tsv_numeric_time_unit,
+                "elan_wide": args.wide_numeric_time_unit,
+                "label_time_blocks": args.blocks_numeric_time_unit}.get(input_format)
+        events = parse_events(text, input_format, unit)
         metadata = extract_header_metadata(text)
         content_hash = sha256_bytes(raw)
         duplicate_of = (
