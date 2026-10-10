@@ -15,14 +15,16 @@ frozen; only lightweight heads are trained. Adaptive frame sampling is
 intentionally deferred until the fixed-eight-position multiscale comparison
 shows a signal, so this experiment isolates one change at a time.
 
-## Four-cell ablation
+## Core four-cell ablation plus matched controls
 
 | Cell | Within-clip multiscale branch | Inter-clip TCN | Meaning |
 |---|---|---|---|
 | M0 | off | off | Original frozen VideoMAE A logits |
-| M1 | on | off | Multi-scale clip-internal representation only |
+| M1S | single-scale mean control | off | Same trainable clip head, but every pooling bin receives the same whole-clip mean |
+| M1 | 1/2/4-scale | off | Multi-scale clip-internal representation only |
 | M2 | off | on | Inter-clip TCN on mean-pooled global/local evidence and A logits |
-| M3 | on | on | Joint multiscale clip branch and inter-clip TCN |
+| M2S | single-scale mean control | on | Mean-control clip head plus inter-clip TCN |
+| M3 | 1/2/4-scale | on | Multi-scale clip branch plus inter-clip TCN |
 
 M1/M3 pool the same eight sampled positions into 1, 2, and 4 equal-width
 normalized-time bins (seven pooled bins total). A shared token projection is
@@ -36,6 +38,15 @@ The source-protocol structural cuts are reused exactly. The TCN never crosses
 an ineligible adjacency or a source/recording cut. Source kind is not a model
 input and is used only for post-hoc slices. Source-policy adjacency labels
 remain weak metadata-derived labels, not verified natural edit-boundary truth.
+
+M1S and M2S are important parameter-matched controls: they use the same
+projection, fusion MLP, and classifier dimensions as M1/M3, but repeat the
+whole-clip mean descriptor into all seven bins instead of preserving temporal
+subdivisions. This lets M1 vs M1S and M3 vs M2S test whether multi-scale
+temporal evidence helps beyond adding a trainable head. The six cells support
+factorial contrasts: context effect on A (M2−M0), context effect with a mean
+head (M2S−M1S), context effect with a multiscale head (M3−M1), multiscale
+effect without context (M1−M1S), and multiscale effect with context (M3−M2S).
 
 ## Data and evaluation contract
 
@@ -74,7 +85,7 @@ python -m experiments.dual_timescale.run \
   --source-protocol-dir /absolute/path/to/sealed/source_protocol \
   --output /absolute/path/to/new_private_output/dual_timescale_seed42 \
   --device cuda \
-  --variants M0,M1,M2,M3 \
+  --variants M0,M1S,M1,M2,M2S,M3 \
   --seed 42 --epochs 30 --patience 5 \
   --batch-size-segments 16 --embedding-dim 128 \
   --hidden-dim 64 --blocks 3 --dropout 0.1 \
@@ -90,12 +101,11 @@ artifacts local.
 
 ## How to interpret the result
 
-- M1 vs M0: clip-internal multiscale contribution without neighboring clips.
-- M2 vs M0: inter-clip TCN contribution without the new multiscale branch.
-- M3 vs M2: marginal value of adding the clip-internal branch when context is
-  already enabled.
-- M3 vs M1: marginal value of inter-clip TCN when the clip-internal branch is
-  enabled.
+- M1 vs M1S: multi-scale pooling gain beyond a parameter-matched mean-pooling head.
+- M3 vs M2S: multi-scale pooling gain when inter-clip context is enabled.
+- M2 vs M0: inter-clip TCN gain on the original A evidence.
+- M2S vs M1S: context gain with the single-scale mean-control head.
+- M3 vs M1: context gain with the multi-scale clip head.
 - If M3 only beats M0 but M1 and M2 do not help separately, do not claim both
   modules independently contribute; report the interaction and investigate it.
 - Use the duration and source slices only as diagnostics. Groups may omit one
