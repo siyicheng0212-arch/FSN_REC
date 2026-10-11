@@ -1,0 +1,23 @@
+{
+  "schema": "fsn-hospital-native-temporal-comparison-v1",
+  "seed": 42,
+  "variants": ["bigru", "mstcnpp", "asformer"],
+  "selection_order": ["plain_tcn", "short_tcn", "bigru", "mstcnpp", "asformer"],
+  "training": {"epochs": 100, "batch_segments": 16, "lr": 0.001, "weight_decay": 0.01, "clip_grad": 5.0, "optimizer": "AdamW", "early_stopping": false, "precision": "float32", "neighbor_augmentation": false},
+  "runtime_precision": {"cuda_matmul_allow_tf32": false, "cudnn_allow_tf32": false, "batch_independence_atol": 0.00002, "batch_independence_rtol": 0.00002},
+  "bigru": {"hidden": 64, "layers": 2, "dropout": 0.1, "loss": "valid_clip_CE"},
+  "mstcnpp": {"hidden": 64, "PG_layers": 11, "refinement_layers": 10, "refinements": 3, "dropout": 0.5},
+  "asformer": {"hidden": 64, "layers": 10, "decoders": 3, "r1": 2, "r2": 2, "channel_mask_rate": 0.3, "dropout": 0.5},
+  "multistage_loss": {"reduction": "sum_of_four_stage_CE_and_smoothing", "smooth_weight": 0.15, "log_difference_square_cap": 16.0, "smooth_normalization": "valid_within_segment_adjacent_pairs_times_seven"},
+  "input": "frozen_A_mean768_max768_raw_logits7",
+  "output": "native_final_stage_seven_logits_no_extra_A_residual",
+  "selection": "strict_heldout888_development_macro_f1_same_checkpoint_accuracy_earliest_tie",
+  "challenge_seed": 20261010,
+  "R_D_enabled": false,
+  "upstream": {
+    "mstcnpp": {"repo": "https://github.com/sj-li/MS-TCN2", "commit": "f423a9e65f4ccb1cd7322eb9f94946a19e787993", "license": "MIT"},
+    "asformer": {"repo": "https://github.com/ChinaYi/ASFormer", "commit": "e1bbe4f3ed083748f91467c51a63ac2a8b9277ad", "license": "MIT"}
+  },
+  "architecture_loss_capacity_compute_differ": true,
+  "full_official_frame_level_reproduction": false
+}

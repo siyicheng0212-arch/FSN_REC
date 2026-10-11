@@ -1,6 +1,0 @@
-# Local-only artifacts: manifests contain absolute source paths and caches
-# contain decoded research frames. Never publish either directory.
-pilot_manifests/
-pilot_cache/
-results/
-__pycache__/

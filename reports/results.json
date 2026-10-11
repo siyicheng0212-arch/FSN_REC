@@ -1,0 +1,1159 @@
+{
+  "schema": "deidentified-temporal-research-results-v1",
+  "snapshot_beijing_time": "2026-10-12T00:59:25.249444+08:00",
+  "selection_metric": "development_validation_seven_class_macro_f1",
+  "independent_test": false,
+  "patient_independence_verified": false,
+  "seed": 42,
+  "train_count": 7306,
+  "val_count": 888,
+  "class_names": [
+    "消毒",
+    "进针",
+    "运针",
+    "扫散",
+    "再灌注",
+    "拔针",
+    "固定"
+  ],
+  "selection_order": [
+    "plain_tcn",
+    "short_tcn",
+    "bigru",
+    "mstcnpp",
+    "asformer",
+    "mstcnpp_visual_r",
+    "asformer_interval",
+    "asformer_interval_self_reference"
+  ],
+  "selected_temporal": "asformer_interval_self_reference",
+  "confusion_convention": "rows=true_class;columns=predicted_class",
+  "variants": {
+    "plain_tcn": {
+      "metrics": {
+        "accuracy": 0.7522522522522522,
+        "confusion_matrix": [
+          [
+            45,
+            1,
+            3,
+            1,
+            0,
+            7,
+            0
+          ],
+          [
+            0,
+            118,
+            3,
+            4,
+            2,
+            0,
+            0
+          ],
+          [
+            0,
+            8,
+            80,
+            70,
+            10,
+            0,
+            2
+          ],
+          [
+            0,
+            1,
+            0,
+            242,
+            75,
+            2,
+            0
+          ],
+          [
+            0,
+            2,
+            0,
+            12,
+            92,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            5,
+            3,
+            2,
+            81,
+            0
+          ],
+          [
+            0,
+            4,
+            0,
+            2,
+            0,
+            1,
+            10
+          ]
+        ],
+        "macro_f1": 0.7657907896669152,
+        "micro_f1": 0.7522522522522523,
+        "per_class": [
+          {
+            "class_id": 0,
+            "class_name": "消毒",
+            "f1": 0.8823529411764706,
+            "precision": 1,
+            "recall": 0.7894736842105263,
+            "support": 57
+          },
+          {
+            "class_id": 1,
+            "class_name": "进针",
+            "f1": 0.9042145593869733,
+            "precision": 0.8805970149253731,
+            "recall": 0.9291338582677166,
+            "support": 127
+          },
+          {
+            "class_id": 2,
+            "class_name": "运针",
+            "f1": 0.6130268199233716,
+            "precision": 0.8791208791208791,
+            "recall": 0.47058823529411764,
+            "support": 170
+          },
+          {
+            "class_id": 3,
+            "class_name": "扫散",
+            "f1": 0.7400611620795108,
+            "precision": 0.7245508982035929,
+            "recall": 0.75625,
+            "support": 320
+          },
+          {
+            "class_id": 4,
+            "class_name": "再灌注",
+            "f1": 0.6411149825783973,
+            "precision": 0.5082872928176796,
+            "recall": 0.8679245283018868,
+            "support": 106
+          },
+          {
+            "class_id": 5,
+            "class_name": "拔针",
+            "f1": 0.8901098901098901,
+            "precision": 0.8901098901098901,
+            "recall": 0.8901098901098901,
+            "support": 91
+          },
+          {
+            "class_id": 6,
+            "class_name": "固定",
+            "f1": 0.6896551724137931,
+            "precision": 0.8333333333333334,
+            "recall": 0.5882352941176471,
+            "support": 17
+          }
+        ],
+        "weighted_f1": 0.7509525045337451
+      },
+      "resources": {
+        "best_epoch": 98,
+        "epochs_completed": 100,
+        "optimizer_steps": 19200,
+        "trainable_parameters": 148935
+      },
+      "completion": "accepted_training_and_best_replay"
+    },
+    "short_tcn": {
+      "metrics": {
+        "accuracy": 0.7466216216216216,
+        "confusion_matrix": [
+          [
+            44,
+            0,
+            3,
+            2,
+            0,
+            8,
+            0
+          ],
+          [
+            0,
+            116,
+            3,
+            5,
+            2,
+            0,
+            1
+          ],
+          [
+            0,
+            7,
+            80,
+            72,
+            9,
+            0,
+            2
+          ],
+          [
+            0,
+            1,
+            0,
+            235,
+            81,
+            3,
+            0
+          ],
+          [
+            0,
+            2,
+            0,
+            9,
+            95,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            5,
+            3,
+            1,
+            82,
+            0
+          ],
+          [
+            0,
+            3,
+            0,
+            2,
+            0,
+            1,
+            11
+          ]
+        ],
+        "macro_f1": 0.7654707142648911,
+        "micro_f1": 0.7466216216216216,
+        "per_class": [
+          {
+            "class_id": 0,
+            "class_name": "消毒",
+            "f1": 0.8712871287128713,
+            "precision": 1,
+            "recall": 0.7719298245614035,
+            "support": 57
+          },
+          {
+            "class_id": 1,
+            "class_name": "进针",
+            "f1": 0.9062500000000001,
+            "precision": 0.8992248062015504,
+            "recall": 0.9133858267716536,
+            "support": 127
+          },
+          {
+            "class_id": 2,
+            "class_name": "运针",
+            "f1": 0.6130268199233716,
+            "precision": 0.8791208791208791,
+            "recall": 0.47058823529411764,
+            "support": 170
+          },
+          {
+            "class_id": 3,
+            "class_name": "扫散",
+            "f1": 0.7253086419753086,
+            "precision": 0.7164634146341463,
+            "recall": 0.734375,
+            "support": 320
+          },
+          {
+            "class_id": 4,
+            "class_name": "再灌注",
+            "f1": 0.6462585034013606,
+            "precision": 0.5053191489361702,
+            "recall": 0.8962264150943396,
+            "support": 106
+          },
+          {
+            "class_id": 5,
+            "class_name": "拔针",
+            "f1": 0.8864864864864866,
+            "precision": 0.8723404255319149,
+            "recall": 0.9010989010989011,
+            "support": 91
+          },
+          {
+            "class_id": 6,
+            "class_name": "固定",
+            "f1": 0.7096774193548386,
+            "precision": 0.7857142857142857,
+            "recall": 0.6470588235294118,
+            "support": 17
+          }
+        ],
+        "weighted_f1": 0.745843050580577
+      },
+      "resources": {
+        "best_epoch": 9,
+        "epochs_completed": 100,
+        "optimizer_steps": 19200,
+        "trainable_parameters": 148935
+      },
+      "completion": "accepted_training_and_best_replay"
+    },
+    "bigru": {
+      "metrics": {
+        "accuracy": 0.740990990990991,
+        "confusion_matrix": [
+          [
+            42,
+            1,
+            3,
+            2,
+            0,
+            9,
+            0
+          ],
+          [
+            0,
+            119,
+            3,
+            3,
+            2,
+            0,
+            0
+          ],
+          [
+            0,
+            10,
+            80,
+            70,
+            9,
+            0,
+            1
+          ],
+          [
+            0,
+            2,
+            1,
+            227,
+            88,
+            2,
+            0
+          ],
+          [
+            0,
+            1,
+            0,
+            7,
+            98,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            6,
+            1,
+            2,
+            82,
+            0
+          ],
+          [
+            0,
+            4,
+            0,
+            2,
+            0,
+            1,
+            10
+          ]
+        ],
+        "macro_f1": 0.7600163715690037,
+        "micro_f1": 0.740990990990991,
+        "per_class": [
+          {
+            "class_id": 0,
+            "class_name": "消毒",
+            "f1": 0.8484848484848484,
+            "precision": 1,
+            "recall": 0.7368421052631579,
+            "support": 57
+          },
+          {
+            "class_id": 1,
+            "class_name": "进针",
+            "f1": 0.9015151515151516,
+            "precision": 0.8686131386861314,
+            "recall": 0.937007874015748,
+            "support": 127
+          },
+          {
+            "class_id": 2,
+            "class_name": "运针",
+            "f1": 0.6083650190114068,
+            "precision": 0.8602150537634409,
+            "recall": 0.47058823529411764,
+            "support": 170
+          },
+          {
+            "class_id": 3,
+            "class_name": "扫散",
+            "f1": 0.7183544303797468,
+            "precision": 0.7275641025641025,
+            "recall": 0.709375,
+            "support": 320
+          },
+          {
+            "class_id": 4,
+            "class_name": "再灌注",
+            "f1": 0.6426229508196721,
+            "precision": 0.49246231155778897,
+            "recall": 0.9245283018867925,
+            "support": 106
+          },
+          {
+            "class_id": 5,
+            "class_name": "拔针",
+            "f1": 0.8864864864864866,
+            "precision": 0.8723404255319149,
+            "recall": 0.9010989010989011,
+            "support": 91
+          },
+          {
+            "class_id": 6,
+            "class_name": "固定",
+            "f1": 0.7142857142857143,
+            "precision": 0.9090909090909091,
+            "recall": 0.5882352941176471,
+            "support": 17
+          }
+        ],
+        "weighted_f1": 0.7399579862156885
+      },
+      "resources": {
+        "best_epoch": 4,
+        "epochs_completed": 100,
+        "optimizer_steps": 19200,
+        "trainable_parameters": 224263
+      },
+      "completion": "accepted_training_and_best_replay"
+    },
+    "mstcnpp": {
+      "metrics": {
+        "accuracy": 0.7578828828828829,
+        "confusion_matrix": [
+          [
+            46,
+            0,
+            2,
+            0,
+            0,
+            9,
+            0
+          ],
+          [
+            0,
+            113,
+            5,
+            3,
+            2,
+            2,
+            2
+          ],
+          [
+            0,
+            4,
+            95,
+            54,
+            9,
+            6,
+            2
+          ],
+          [
+            0,
+            1,
+            3,
+            223,
+            88,
+            4,
+            1
+          ],
+          [
+            0,
+            0,
+            0,
+            7,
+            98,
+            0,
+            1
+          ],
+          [
+            2,
+            0,
+            3,
+            1,
+            1,
+            84,
+            0
+          ],
+          [
+            0,
+            1,
+            0,
+            0,
+            0,
+            2,
+            14
+          ]
+        ],
+        "macro_f1": 0.7802677113597477,
+        "micro_f1": 0.7578828828828829,
+        "per_class": [
+          {
+            "class_id": 0,
+            "class_name": "消毒",
+            "f1": 0.8761904761904762,
+            "precision": 0.9583333333333334,
+            "recall": 0.8070175438596491,
+            "support": 57
+          },
+          {
+            "class_id": 1,
+            "class_name": "进针",
+            "f1": 0.9186991869918699,
+            "precision": 0.9495798319327731,
+            "recall": 0.889763779527559,
+            "support": 127
+          },
+          {
+            "class_id": 2,
+            "class_name": "运针",
+            "f1": 0.683453237410072,
+            "precision": 0.8796296296296297,
+            "recall": 0.5588235294117647,
+            "support": 170
+          },
+          {
+            "class_id": 3,
+            "class_name": "扫散",
+            "f1": 0.7335526315789473,
+            "precision": 0.7743055555555556,
+            "recall": 0.696875,
+            "support": 320
+          },
+          {
+            "class_id": 4,
+            "class_name": "再灌注",
+            "f1": 0.6447368421052632,
+            "precision": 0.494949494949495,
+            "recall": 0.9245283018867925,
+            "support": 106
+          },
+          {
+            "class_id": 5,
+            "class_name": "拔针",
+            "f1": 0.8484848484848485,
+            "precision": 0.7850467289719626,
+            "recall": 0.9230769230769231,
+            "support": 91
+          },
+          {
+            "class_id": 6,
+            "class_name": "固定",
+            "f1": 0.7567567567567567,
+            "precision": 0.7,
+            "recall": 0.8235294117647058,
+            "support": 17
+          }
+        ],
+        "weighted_f1": 0.7612169343422793
+      },
+      "resources": {
+        "best_epoch": 16,
+        "epochs_completed": 100,
+        "optimizer_steps": 19200,
+        "trainable_parameters": 960092
+      },
+      "completion": "accepted_training_and_best_replay"
+    },
+    "asformer": {
+      "metrics": {
+        "accuracy": 0.7759009009009009,
+        "confusion_matrix": [
+          [
+            41,
+            0,
+            2,
+            1,
+            0,
+            13,
+            0
+          ],
+          [
+            0,
+            112,
+            9,
+            4,
+            2,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            109,
+            54,
+            6,
+            0,
+            1
+          ],
+          [
+            0,
+            2,
+            3,
+            239,
+            73,
+            3,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            16,
+            89,
+            1,
+            0
+          ],
+          [
+            0,
+            0,
+            2,
+            2,
+            0,
+            87,
+            0
+          ],
+          [
+            0,
+            2,
+            0,
+            1,
+            0,
+            2,
+            12
+          ]
+        ],
+        "macro_f1": 0.7965853108840024,
+        "micro_f1": 0.7759009009009009,
+        "per_class": [
+          {
+            "class_id": 0,
+            "class_name": "消毒",
+            "f1": 0.8367346938775511,
+            "precision": 1,
+            "recall": 0.7192982456140351,
+            "support": 57
+          },
+          {
+            "class_id": 1,
+            "class_name": "进针",
+            "f1": 0.9218106995884774,
+            "precision": 0.9655172413793104,
+            "recall": 0.8818897637795275,
+            "support": 127
+          },
+          {
+            "class_id": 2,
+            "class_name": "运针",
+            "f1": 0.7389830508474576,
+            "precision": 0.872,
+            "recall": 0.6411764705882353,
+            "support": 170
+          },
+          {
+            "class_id": 3,
+            "class_name": "扫散",
+            "f1": 0.750392464678179,
+            "precision": 0.7539432176656151,
+            "recall": 0.746875,
+            "support": 320
+          },
+          {
+            "class_id": 4,
+            "class_name": "再灌注",
+            "f1": 0.6449275362318841,
+            "precision": 0.5235294117647059,
+            "recall": 0.839622641509434,
+            "support": 106
+          },
+          {
+            "class_id": 5,
+            "class_name": "拔针",
+            "f1": 0.8832487309644671,
+            "precision": 0.8207547169811321,
+            "recall": 0.9560439560439561,
+            "support": 91
+          },
+          {
+            "class_id": 6,
+            "class_name": "固定",
+            "f1": 0.8000000000000002,
+            "precision": 0.9230769230769231,
+            "recall": 0.7058823529411765,
+            "support": 17
+          }
+        ],
+        "weighted_f1": 0.7802415507862481
+      },
+      "resources": {
+        "best_epoch": 9,
+        "epochs_completed": 53,
+        "optimizer_steps": 10176,
+        "trainable_parameters": 1096732
+      },
+      "completion": "accepted_training_and_best_replay"
+    },
+    "mstcnpp_visual_r": {
+      "metrics": {
+        "accuracy": 0.7578828828828829,
+        "confusion_matrix": [
+          [
+            51,
+            0,
+            5,
+            0,
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            117,
+            4,
+            4,
+            2,
+            0,
+            0
+          ],
+          [
+            0,
+            5,
+            95,
+            62,
+            7,
+            0,
+            1
+          ],
+          [
+            2,
+            4,
+            5,
+            234,
+            74,
+            1,
+            0
+          ],
+          [
+            1,
+            2,
+            2,
+            10,
+            91,
+            0,
+            0
+          ],
+          [
+            4,
+            0,
+            9,
+            2,
+            1,
+            75,
+            0
+          ],
+          [
+            0,
+            5,
+            0,
+            2,
+            0,
+            0,
+            10
+          ]
+        ],
+        "macro_f1": 0.7764469960597798,
+        "micro_f1": 0.7578828828828829,
+        "per_class": [
+          {
+            "class_id": 0,
+            "class_name": "消毒",
+            "f1": 0.8869565217391304,
+            "precision": 0.8793103448275862,
+            "recall": 0.8947368421052632,
+            "support": 57
+          },
+          {
+            "class_id": 1,
+            "class_name": "进针",
+            "f1": 0.9,
+            "precision": 0.8796992481203008,
+            "recall": 0.9212598425196851,
+            "support": 127
+          },
+          {
+            "class_id": 2,
+            "class_name": "运针",
+            "f1": 0.6551724137931034,
+            "precision": 0.7916666666666666,
+            "recall": 0.5588235294117647,
+            "support": 170
+          },
+          {
+            "class_id": 3,
+            "class_name": "扫散",
+            "f1": 0.7381703470031546,
+            "precision": 0.7452229299363057,
+            "recall": 0.73125,
+            "support": 320
+          },
+          {
+            "class_id": 4,
+            "class_name": "再灌注",
+            "f1": 0.6476868327402135,
+            "precision": 0.52,
+            "recall": 0.8584905660377359,
+            "support": 106
+          },
+          {
+            "class_id": 5,
+            "class_name": "拔针",
+            "f1": 0.8928571428571428,
+            "precision": 0.974025974025974,
+            "recall": 0.8241758241758241,
+            "support": 91
+          },
+          {
+            "class_id": 6,
+            "class_name": "固定",
+            "f1": 0.7142857142857143,
+            "precision": 0.9090909090909091,
+            "recall": 0.5882352941176471,
+            "support": 17
+          }
+        ],
+        "weighted_f1": 0.7595698249305037
+      },
+      "resources": {
+        "best_epoch": 42,
+        "epochs_completed": 85,
+        "optimizer_steps": 16320,
+        "seconds": 2187.7152167899767,
+        "trainable_parameters": 1255004
+      },
+      "completion": "accepted_training_and_best_replay"
+    },
+    "asformer_interval": {
+      "metrics": {
+        "accuracy": 0.7578828828828829,
+        "confusion_matrix": [
+          [
+            44,
+            0,
+            4,
+            1,
+            0,
+            8,
+            0
+          ],
+          [
+            0,
+            114,
+            5,
+            6,
+            2,
+            0,
+            0
+          ],
+          [
+            0,
+            4,
+            90,
+            68,
+            6,
+            0,
+            2
+          ],
+          [
+            0,
+            1,
+            1,
+            243,
+            73,
+            2,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            17,
+            89,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            3,
+            4,
+            2,
+            82,
+            0
+          ],
+          [
+            0,
+            4,
+            0,
+            1,
+            0,
+            1,
+            11
+          ]
+        ],
+        "macro_f1": 0.7777024107658229,
+        "micro_f1": 0.7578828828828829,
+        "per_class": [
+          {
+            "class_id": 0,
+            "class_name": "消毒",
+            "f1": 0.8712871287128713,
+            "precision": 1,
+            "recall": 0.7719298245614035,
+            "support": 57
+          },
+          {
+            "class_id": 1,
+            "class_name": "进针",
+            "f1": 0.9119999999999999,
+            "precision": 0.926829268292683,
+            "recall": 0.8976377952755905,
+            "support": 127
+          },
+          {
+            "class_id": 2,
+            "class_name": "运针",
+            "f1": 0.6593406593406593,
+            "precision": 0.8737864077669902,
+            "recall": 0.5294117647058824,
+            "support": 170
+          },
+          {
+            "class_id": 3,
+            "class_name": "扫散",
+            "f1": 0.7363636363636363,
+            "precision": 0.7147058823529412,
+            "recall": 0.759375,
+            "support": 320
+          },
+          {
+            "class_id": 4,
+            "class_name": "再灌注",
+            "f1": 0.6402877697841727,
+            "precision": 0.5174418604651163,
+            "recall": 0.839622641509434,
+            "support": 106
+          },
+          {
+            "class_id": 5,
+            "class_name": "拔针",
+            "f1": 0.8913043478260869,
+            "precision": 0.8817204301075269,
+            "recall": 0.9010989010989011,
+            "support": 91
+          },
+          {
+            "class_id": 6,
+            "class_name": "固定",
+            "f1": 0.7333333333333334,
+            "precision": 0.8461538461538461,
+            "recall": 0.6470588235294118,
+            "support": 17
+          }
+        ],
+        "weighted_f1": 0.7597494459199011
+      },
+      "resources": {
+        "best_epoch": 15,
+        "epochs_completed": 25,
+        "optimizer_steps": 4800,
+        "peak_cuda_bytes": 58005504,
+        "seconds": 2353.1187116350047,
+        "stop_reason": "early_stopping_patience_10",
+        "trainable_parameters": 1096845
+      },
+      "completion": "accepted_training_and_best_replay"
+    },
+    "asformer_interval_self_reference": {
+      "metrics": {
+        "accuracy": 0.7725225225225225,
+        "confusion_matrix": [
+          [
+            48,
+            0,
+            3,
+            0,
+            0,
+            6,
+            0
+          ],
+          [
+            0,
+            117,
+            4,
+            3,
+            3,
+            0,
+            0
+          ],
+          [
+            0,
+            10,
+            106,
+            41,
+            11,
+            0,
+            2
+          ],
+          [
+            0,
+            2,
+            8,
+            226,
+            82,
+            2,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            13,
+            93,
+            0,
+            0
+          ],
+          [
+            2,
+            0,
+            2,
+            2,
+            2,
+            83,
+            0
+          ],
+          [
+            0,
+            3,
+            0,
+            1,
+            0,
+            0,
+            13
+          ]
+        ],
+        "macro_f1": 0.8029922541458626,
+        "micro_f1": 0.7725225225225225,
+        "per_class": [
+          {
+            "class_id": 0,
+            "class_name": "消毒",
+            "f1": 0.8971962616822429,
+            "precision": 0.96,
+            "recall": 0.8421052631578947,
+            "support": 57
+          },
+          {
+            "class_id": 1,
+            "class_name": "进针",
+            "f1": 0.9034749034749034,
+            "precision": 0.8863636363636364,
+            "recall": 0.9212598425196851,
+            "support": 127
+          },
+          {
+            "class_id": 2,
+            "class_name": "运针",
+            "f1": 0.7235494880546075,
+            "precision": 0.8617886178861789,
+            "recall": 0.6235294117647059,
+            "support": 170
+          },
+          {
+            "class_id": 3,
+            "class_name": "扫散",
+            "f1": 0.745874587458746,
+            "precision": 0.7902097902097902,
+            "recall": 0.70625,
+            "support": 320
+          },
+          {
+            "class_id": 4,
+            "class_name": "再灌注",
+            "f1": 0.6262626262626264,
+            "precision": 0.4869109947643979,
+            "recall": 0.8773584905660378,
+            "support": 106
+          },
+          {
+            "class_id": 5,
+            "class_name": "拔针",
+            "f1": 0.9120879120879121,
+            "precision": 0.9120879120879121,
+            "recall": 0.9120879120879121,
+            "support": 91
+          },
+          {
+            "class_id": 6,
+            "class_name": "固定",
+            "f1": 0.8125,
+            "precision": 0.8666666666666667,
+            "recall": 0.7647058823529411,
+            "support": 17
+          }
+        ],
+        "weighted_f1": 0.7778841430147759
+      },
+      "resources": {
+        "best_epoch": 13,
+        "epochs_completed": 23,
+        "optimizer_steps": 4416,
+        "peak_cuda_bytes": 58003456,
+        "seconds": 2222.475420516974,
+        "stop_reason": "early_stopping_patience_10",
+        "trainable_parameters": 1096844
+      },
+      "completion": "accepted_training_and_best_replay"
+    }
+  },
+  "paired_vs_original_ASFormer": {
+    "changed_count": 93,
+    "changed_fraction": 0.10472972972972973,
+    "improved": 38,
+    "worsened": 41,
+    "wrong_to_different_wrong": 14
+  },
+  "paired_vs_previous_interval": {
+    "changed_count": 92,
+    "changed_fraction": 0.1036036036036036,
+    "improved": 46,
+    "worsened": 33,
+    "wrong_to_different_wrong": 13
+  },
+  "source_summary_sha256": "0c570cfaea0eef8b290ffbce5af1a6366d9a634c3c89ceb090216ad41a269d65"
+}

@@ -1,0 +1,47 @@
+{
+  "schema": "public-release-privacy-and-consistency-audit-v1",
+  "status": "passed_before_upload",
+  "included_scope": [
+    "core_model_source",
+    "model_configuration",
+    "synthetic_tests",
+    "deidentified_aggregate_results",
+    "complete_epoch_aggregate_curves",
+    "deidentified_group_diagnostics",
+    "source_hash_provenance"
+  ],
+  "excluded_scope": [
+    "media",
+    "annotations",
+    "manifests_and_excluded_rows",
+    "per_clip_predictions",
+    "patient_and_recording_identifiers",
+    "raw_logs",
+    "cache_arrays",
+    "checkpoint_weights",
+    "deployment_paths_credentials_and_device_identifiers",
+    "private_git_history",
+    "private_runtime_and_data_orchestration"
+  ],
+  "reviewed_file_count": 41,
+  "exact_prepared_bytes_match_local": true,
+  "file_allowlist_and_hash_audit_passed": true,
+  "aggregate_metrics_confusion_and_budgets_consistent": true,
+  "synthetic_cpu_tests": {
+    "passed": 67,
+    "failed": 0
+  },
+  "gpu_training_or_private_pipeline_rerun": false,
+  "publication_scope_is_not_full_pipeline_reproduction": true,
+  "new_non_main_branch_only": true,
+  "main_merge": false,
+  "limitations": [
+    "development_validation_not_independent_test",
+    "single_seed42",
+    "patient_independence_not_verified",
+    "capacity_loss_and_actual_early_stopping_budgets_differ",
+    "inference_context_challenges_not_retrained_causal_ablations",
+    "future_category_relation_candidate_not_implemented_or_trained"
+  ],
+  "content_review_completed": true
+}

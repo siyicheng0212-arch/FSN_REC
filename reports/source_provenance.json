@@ -1,0 +1,83 @@
+{
+  "schema": "public-source-provenance-v1",
+  "core_model_snapshot_commit": "7ef574540aa56ce356190e6e4309b486d8d8d15d",
+  "visual_adapter_snapshot_commit": "1228bf717e354c52c5ceffb34aede1d5dbbfdbb1",
+  "source_commit_is_not_a_claim_of_public_availability": true,
+  "files": {
+    "experiments/hospital_temporal_compare/model.py": {
+      "original_file_sha256": "a41f4b10e39d9ab448926dc9884ca2dc90642be84d45b88dd042a11d261df19f",
+      "publication_transform": "none",
+      "published_sha256": "a41f4b10e39d9ab448926dc9884ca2dc90642be84d45b88dd042a11d261df19f"
+    },
+    "experiments/hospital_temporal_compare/config.json": {
+      "original_file_sha256": "a9093e69e2c5a5931719bfb7fef923cd8984a23169d670680fcb3bc311c04d8c",
+      "publication_transform": "development-site name anonymized in metadata only",
+      "published_sha256": "1e172eab01b8e67c9b32a1bff71d83415cb2f8119ac344c7b2b2f62764954240"
+    },
+    "experiments/hospital_temporal_compare/vendor/asformer.py": {
+      "original_file_sha256": "1e94d728ccf144083489f46b85697ad900b5f64334861176f15660ac126cc6f4",
+      "publication_transform": "none",
+      "published_sha256": "1e94d728ccf144083489f46b85697ad900b5f64334861176f15660ac126cc6f4"
+    },
+    "experiments/hospital_temporal_compare/vendor/mstcn2.py": {
+      "original_file_sha256": "2bd76fd30d9d33a089ab5d369bc3480153e2e90815ff037a0e43bebc0040ca19",
+      "publication_transform": "none",
+      "published_sha256": "2bd76fd30d9d33a089ab5d369bc3480153e2e90815ff037a0e43bebc0040ca19"
+    },
+    "experiments/hospital_temporal_compare/vendor/LICENSE_asformer.txt": {
+      "original_file_sha256": "b271200a6c62b2dd5d0b6f9b8faa1b42ebe65426f0926f9200672b9a9a46f690",
+      "publication_transform": "none",
+      "published_sha256": "b271200a6c62b2dd5d0b6f9b8faa1b42ebe65426f0926f9200672b9a9a46f690"
+    },
+    "experiments/hospital_temporal_compare/vendor/LICENSE_mstcn2.txt": {
+      "original_file_sha256": "e7e9d9d6f9ed5a56e8c1893415c553ea836f1172616defb3590be3907edeb05d",
+      "publication_transform": "none",
+      "published_sha256": "e7e9d9d6f9ed5a56e8c1893415c553ea836f1172616defb3590be3907edeb05d"
+    },
+    "experiments/hospital_asformer_interval/model.py": {
+      "original_file_sha256": "2cef818094f5ac1274d81c6403d23618540090f64c6be8b44771a65618fa04ad",
+      "publication_transform": "none",
+      "published_sha256": "2cef818094f5ac1274d81c6403d23618540090f64c6be8b44771a65618fa04ad"
+    },
+    "experiments/hospital_asformer_anchor/model.py": {
+      "original_file_sha256": "af6185be1eff24fd8647172f44c8f8773164dfae6da890f691e9786dc15ce1e8",
+      "publication_transform": "none",
+      "published_sha256": "af6185be1eff24fd8647172f44c8f8773164dfae6da890f691e9786dc15ce1e8"
+    },
+    "experiments/hospital_mstcn_visual/model.py": {
+      "original_file_sha256": "8974890b800ecc59f7ca7e4407d1cb23762ecf7ec2818c702bcaca79fe99f127",
+      "publication_transform": "none",
+      "published_sha256": "8974890b800ecc59f7ca7e4407d1cb23762ecf7ec2818c702bcaca79fe99f127"
+    },
+    "experiments/hospital_temporal/model.py": {
+      "original_file_sha256": "06746c5aeb86c63024d50c1bed297d56660e40bef1653e153e7688619fa81422",
+      "publication_transform": "none",
+      "published_sha256": "06746c5aeb86c63024d50c1bed297d56660e40bef1653e153e7688619fa81422"
+    },
+    "experiments/hospital_temporal/config.json": {
+      "original_file_sha256": "d1deba9ce1844c6c51d61371c1a9a8097889874fd0d3a03d502d70490a16f682",
+      "publication_transform": "development-site name anonymized in metadata only",
+      "published_sha256": "7883736de92f1e3413f43144616f11b499a4dee12124bcf7a2a88bc748ded625"
+    },
+    "tests/test_hospital_asformer_interval.py": {
+      "original_file_sha256": "a34ae1c8128004769afa2019de419e19b082c1f6df6fcdb443a40e1d6c801360",
+      "publication_transform": "none",
+      "published_sha256": "a34ae1c8128004769afa2019de419e19b082c1f6df6fcdb443a40e1d6c801360"
+    },
+    "tests/test_hospital_asformer_anchor.py": {
+      "original_file_sha256": "6efcdf2293a55277e5101182c72de209a7e30479b766e9558a23c86db8831c76",
+      "publication_transform": "removed private-local-Git-history byte comparison; model tests unchanged",
+      "published_sha256": "bb7ebbfbb1f5ec9f7b27afd51dde150b76190a652c52684ceffcfb19e856d0c5"
+    },
+    "experiments/relation/tcn_baseline.py": {
+      "original_file_sha256": "fbf22b530f9046085e12a7e3889a1664602a590da9dfcee207d6810ce455d7d6",
+      "publication_transform": "AST-selected three exact class bodies; public imports only; private data and training orchestration omitted",
+      "published_sha256": "06d40fc3e9370328e5aba6b3858a2878f16b2622ae73b397cee63a733870882d"
+    },
+    "experiments/hospital_visual/model.py": {
+      "original_file_sha256": "c88c59bebff885f1dbab35a163c972dbff0f6564aa96c06de69837c8c95f5ba5",
+      "publication_transform": "development-site name anonymized in selection metadata; external official source/weight assets not bundled",
+      "published_sha256": "9e538dd9f7bcfbfc61dd848ba8ccbdf627e14b18f45363d5cb9b3c25539b7c24"
+    }
+  }
+}

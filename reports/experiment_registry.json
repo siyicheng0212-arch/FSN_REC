@@ -1,0 +1,139 @@
+{
+  "schema": "public-experiment-registry-v1",
+  "reported_results_completed": true,
+  "private_runtime_or_data_not_bundled": true,
+  "registered_selection_order": [
+    "plain_tcn",
+    "short_tcn",
+    "bigru",
+    "mstcnpp",
+    "asformer",
+    "mstcnpp_visual_r",
+    "asformer_interval",
+    "asformer_interval_self_reference"
+  ],
+  "variants": {
+    "plain_tcn": {
+      "source_commit": "5fe36989cdac3f985cbd25cac8750313e13abe71",
+      "best_epoch": 98,
+      "epochs_completed": 100,
+      "optimizer_steps": 19200,
+      "trainable_parameters": 148935,
+      "history_sha256": "a4a6ffb7f6cb7c9e14b597ccc7fbde9703a3a86f769c88b8831da7b96331a5aa",
+      "stop_policy_actual": "registered_100_epochs",
+      "loss": "unweighted_valid_clip_cross_entropy",
+      "acceptance": "best_predictions_replayed_and_completion_accepted"
+    },
+    "short_tcn": {
+      "source_commit": "5fe36989cdac3f985cbd25cac8750313e13abe71",
+      "best_epoch": 9,
+      "epochs_completed": 100,
+      "optimizer_steps": 19200,
+      "trainable_parameters": 148935,
+      "history_sha256": "dda54563256c21b26f8821a520d3f72a228a1f0159f8c22b2f204d9b55440067",
+      "stop_policy_actual": "registered_100_epochs",
+      "loss": "unweighted_valid_clip_cross_entropy",
+      "acceptance": "best_predictions_replayed_and_completion_accepted"
+    },
+    "bigru": {
+      "source_commit": "70fd1d2c9cff435e43deba90e541bd09bddb953c",
+      "best_epoch": 4,
+      "epochs_completed": 100,
+      "optimizer_steps": 19200,
+      "trainable_parameters": 224263,
+      "history_sha256": "98d8524d2296efc9ca91e17cbd90eaa7de817daba391b277bd825f808d33221a",
+      "stop_policy_actual": "registered_100_epochs",
+      "loss": "unweighted_valid_clip_cross_entropy",
+      "acceptance": "best_predictions_replayed_and_completion_accepted"
+    },
+    "mstcnpp": {
+      "source_commit": "70fd1d2c9cff435e43deba90e541bd09bddb953c",
+      "best_epoch": 16,
+      "epochs_completed": 100,
+      "optimizer_steps": 19200,
+      "trainable_parameters": 960092,
+      "history_sha256": "c011f96fdca263e7c093b6139f97891f6d7ed4b99293a79ab80190daf2627acb",
+      "stop_policy_actual": "registered_100_epochs",
+      "loss": "sum_four_stage_CE_plus_0.15_capped_adjacent_log_probability_smoothing",
+      "acceptance": "best_predictions_replayed_and_completion_accepted"
+    },
+    "asformer": {
+      "source_commit": "70fd1d2c9cff435e43deba90e541bd09bddb953c",
+      "best_epoch": 9,
+      "epochs_completed": 53,
+      "optimizer_steps": 10176,
+      "trainable_parameters": 1096732,
+      "history_sha256": "49cc2e4e7dd8d16e64a35ad21bf7ea0eaf3be7040a27d347e63f180159576c7b",
+      "stop_policy_actual": "late_authorized_external_patience10_stop_after_53_complete_epochs",
+      "loss": "sum_four_stage_CE_plus_0.15_capped_adjacent_log_probability_smoothing",
+      "acceptance": "best_predictions_replayed_and_completion_accepted"
+    },
+    "mstcnpp_visual_r": {
+      "source_commit": "3eb47fbfef5a1cca4bc5fad427fe4f90bef7a4e1",
+      "best_epoch": 42,
+      "epochs_completed": 85,
+      "optimizer_steps": 16320,
+      "seconds": 2187.7152167899767,
+      "trainable_parameters": 1255004,
+      "history_sha256": "6df8d26857b6f9c7328281696fc6bbd93ebfd6a94e1c484cd632be6748d4401c",
+      "stop_policy_actual": "late_authorized_external_patience10_stop_after_85_complete_epochs",
+      "loss": "sum_four_stage_CE_plus_0.15_capped_adjacent_log_probability_smoothing",
+      "acceptance": "best_predictions_replayed_and_completion_accepted"
+    },
+    "asformer_interval": {
+      "source_commit": "5fb9de6344bf009df17eea2c8c7d75f2b7ce058e",
+      "best_epoch": 15,
+      "epochs_completed": 25,
+      "optimizer_steps": 4800,
+      "peak_cuda_bytes": 58005504,
+      "seconds": 2353.1187116350047,
+      "stop_reason": "early_stopping_patience_10",
+      "trainable_parameters": 1096845,
+      "history_sha256": "84e841c8227691e2a2fce9ad6c0515715d563a89f5446648f0a6be83b1908de8",
+      "stop_policy_actual": "built_in_first_patience10_plateau",
+      "loss": "sum_four_stage_CE_plus_0.15_capped_adjacent_log_probability_smoothing",
+      "acceptance": "scientific_training_and_evaluation_accepted_by_independent_audit_original_outer_receipt_unavailable"
+    },
+    "asformer_interval_self_reference": {
+      "source_commit": "7ef574540aa56ce356190e6e4309b486d8d8d15d",
+      "best_epoch": 13,
+      "epochs_completed": 23,
+      "optimizer_steps": 4416,
+      "peak_cuda_bytes": 58003456,
+      "seconds": 2222.475420516974,
+      "stop_reason": "early_stopping_patience_10",
+      "trainable_parameters": 1096844,
+      "history_sha256": "9a5ce9a9e91b354d9bdb5a7ac4e28cea9eb754351847fb6fb4852e1e7b55937c",
+      "stop_policy_actual": "built_in_first_patience10_plateau",
+      "loss": "sum_four_stage_CE_plus_0.15_capped_adjacent_log_probability_smoothing",
+      "acceptance": "best_predictions_replayed_and_completion_accepted"
+    }
+  },
+  "untrained_model_code": [
+    "clip_only",
+    "protected_tcn",
+    "multispan_tcn",
+    "relative_tcn",
+    "multispan_relative_tcn"
+  ],
+  "pending": {
+    "uni_adafocus_original": {
+      "status": "new_RGB44_cache_in_progress_as_of_snapshot_no_formal_result",
+      "source_commit": "1228bf717e354c52c5ceffb34aede1d5dbbfdbb1",
+      "input": "8_glance_plus_36_candidates_12_selected_patch128",
+      "maximum_epochs": 55,
+      "early_stopping": false
+    },
+    "class_relation_calibration": {
+      "status": "approved_design_only_not_implemented_or_trained",
+      "baseline": "asformer_interval_self_reference",
+      "calibration_input_dimensions": 19,
+      "calibration_hidden_dimensions": 16,
+      "calibration_output_dimensions": 1,
+      "theoretical_trainable_parameters": 1097068,
+      "seed": 42,
+      "maximum_epochs": 100,
+      "early_stopping_patience": 10
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "schema": "fsn-hospital-temporal-experiment-v1",
+  "seed": 42,
+  "variants": ["plain_tcn", "short_tcn"],
+  "deferred_variants": ["clip_only", "protected_tcn", "multispan_tcn", "relative_tcn", "multispan_relative_tcn"],
+  "training": {"epochs": 100, "batch_segments": 16, "lr": 0.001, "weight_decay": 0.01, "clip_grad": 5.0, "optimizer": "AdamW", "loss": "unweighted_valid_clip_CE", "early_stopping": false, "neighbor_augmentation": false},
+  "model": {"global_dim": 768, "local_dim": 768, "hidden_dim": 64, "blocks": 3, "dropout": 0.1, "clip_only_hidden_dim": 74, "short_tcn_dilations": [1, 1, 1]},
+  "selection": "strict_heldout888_development_macro_f1_same_checkpoint_accuracy",
+  "challenge_seed": 20261010,
+  "R_D_enabled": false,
+  "source_input": false,
+  "identity_input": false,
+  "extra_seeds": false,
+  "relative_neighbor_transform": "GELU(h_neighbor-h_current)_valid_neighbors_only"
+}
